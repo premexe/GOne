@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual Environment
+venv/
+.env
+
+# VS Code
+.vscode/
+
+# Database
+*.db
+
+# Logs
+*.log
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+uploads/medical_records/*
+!uploads/medical_records/.gitkeep
