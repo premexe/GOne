@@ -17,6 +17,43 @@ import {
 } from './mockData';
 import { rankHospitalsForEmergency } from './recommendationEngine';
 import { calculateReadinessScore, classifySymptomUrgency, summarizeMedicalDocument } from './aiService';
+import { request, setToken } from './http';
+
+type BackendUser = {
+  user_id: number;
+  full_name: string;
+  email: string;
+  phone_number: string;
+  date_of_birth: string | null;
+  blood_group: string | null;
+  profile_photo: string | null;
+};
+
+function toUser(user: BackendUser): User {
+  return {
+    id: String(user.user_id),
+    name: user.full_name,
+    email: user.email,
+    phone: user.phone_number,
+    dob: user.date_of_birth ?? '',
+    bloodGroup: user.blood_group ?? '',
+    avatarUrl: user.profile_photo ?? undefined,
+  };
+}
+
+function getUserIdFromToken(token: string): number {
+  const payload = token.split('.')[1];
+  if (!payload) throw new Error('The server returned an invalid access token.');
+
+  const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+  const parsedUserId = Number(JSON.parse(json).sub);
+
+  if (!Number.isInteger(parsedUserId)) {
+    throw new Error('The access token does not contain a valid user ID.');
+  }
+
+  return parsedUserId;
+}
 
 // In-memory persistent state for API mock
 let currentUser: User = { ...INITIAL_USER };
@@ -27,8 +64,17 @@ let currentEmergencyRequests: EmergencyRequest[] = [];
 
 export const api = {
   // Auth
-  async login(email?: string): Promise<User> {
-    await new Promise((r) => setTimeout(r, 400));
+  async login(email: string, password: string): Promise<User> {
+    const result = await request('/users/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+
+    setToken(result.access_token);
+
+    const userId = getUserIdFromToken(result.access_token);
+    const backendUser = await request(`/users/${userId}`) as BackendUser;
+    currentUser = toUser(backendUser);
     return currentUser;
   },
 

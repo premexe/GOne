@@ -28,7 +28,13 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow LifeLink AI+ to use Face ID to unlock your emergency workspace."
+        }
+      ]
     ]
   }
 }
