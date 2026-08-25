@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { User } from '../types';
 import { api } from '../services/api';
 
@@ -22,10 +23,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loginWithBiometrics: async () => {
     set({ isLoading: true });
     try {
-      const user = await api.login();
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+      if (!hasHardware || !isEnrolled) {
+        set({ isLoading: false });
+        return false;
+      }
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Unlock LifeLink AI+',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+
+      if (!result.success) {
+        set({ isLoading: false });
+        return false;
+      }
+
+      // The current app is a demo workspace, so local authentication unlocks
+      // its local demo profile. It deliberately does not send empty login
+      // credentials to the API.
+      const user = await api.getMe();
       set({ user, isAuthenticated: true, isLoading: false });
       return true;
-    } catch (e) {
+    } catch {
       set({ isLoading: false });
       return false;
     }
@@ -33,8 +56,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   loginAsGuest: async () => {
     set({ isLoading: true });
-    const user = await api.login('guest@lifelink.ai');
-    set({ user, isAuthenticated: true, isLoading: false });
+    try {
+      const user = await api.getMe();
+      set({ user, isAuthenticated: true, isLoading: false });
+    } catch {
+      set({ isLoading: false });
+    }
   },
 
   logout: () => {
