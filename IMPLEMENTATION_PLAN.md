@@ -251,3 +251,142 @@ Each milestone should end with a demo against staging, automated tests passing, 
 ## 12. Definition of done
 
 A production feature is complete only when it has a documented API contract; input and authorization controls; loading/error/offline UX; automated tests; accessibility review; logs/metrics without sensitive data; deployment and rollback instructions; and product, privacy, and safety sign-off where it handles health or emergency data.
+
+## 13. UI/UX and design system
+
+### 13.1 Product experience principles
+
+LifeLink AI must feel calm and readable during routine use, then become direct and unmistakable during an active emergency. The interface should:
+
+- Prioritize the next safe action over dense information, especially in SOS flows.
+- Keep health information scannable with short labels, plain language, and clear source/status indicators.
+- Preserve user control: ask permission in context, explain why data is needed, and confirm high-impact actions.
+- Work with poor connectivity: show cached data, last-updated time, retry actions, and clear "not yet sent" states rather than pretending an action succeeded.
+- Never represent a simulated hospital match, notification, dispatcher, or ambulance status as confirmed real-world activity.
+
+### 13.2 Visual themes and colour tokens
+
+Use the existing `frontend/src/constants/theme.ts` tokens as the single source of truth. Components must consume tokens rather than hard-code colours. The theme has two intentional modes.
+
+#### Calm mode (default)
+
+| Token | Hex | Use |
+| --- | --- | --- |
+| `COLORS.bg` | `#FFFFFF` | Main screen background |
+| `COLORS.surface` | `#F7F9FA` | Cards, grouped form areas, low-emphasis containers |
+| `COLORS.ink` | `#0B2545` | Primary text and high-emphasis icons |
+| `COLORS.muted` | `#64748B` | Secondary text, labels, metadata |
+| `COLORS.brand` | `#0E7C86` | Primary actions, links, active navigation, focus treatment |
+| `COLORS.border` | `#EDF1F4` | Dividers, card borders, input outlines |
+
+#### Feature colours
+
+| Area | Background | Accent | Meaning |
+| --- | --- | --- | --- |
+| Readiness | `#DFF3E3` | `#2E9E5B` | Preparedness, successful completion |
+| Medical records | `#E3EEFB` | `#2E6FA6` | Documents, uploads, summaries |
+| Hospitals | `#FCEEDB` | `#E8A33D` | Location, facility search, caution |
+| Emergency wallet | `#EDE7F6` | `#6B4FA0` | Personal emergency information and QR handoff |
+
+#### Semantic status colours
+
+| Status | Hex | Required companion text/icon |
+| --- | --- | --- |
+| Success / confirmed | `#2E9E5B` | Check icon and a label such as "Sent" or "Complete" |
+| Pending / warning | `#E8A33D` | Clock/alert icon and a label such as "Pending" or "Needs attention" |
+| Error / urgent action | `#D7263D` | Error/alert icon and a specific recovery action |
+
+Colour must never be the sole indication of status. Use labels, icons, and, where practical, a status badge shape.
+
+#### Emergency mode (active SOS only)
+
+| Token | Hex | Use |
+| --- | --- | --- |
+| `COLORS.emergency.bg` | `#0A0E14` | Full-screen emergency background |
+| `COLORS.emergency.cardBg` | `#161F2B` | SOS timeline and detail cards |
+| `COLORS.emergency.border` | `#263445` | Emergency card separation |
+| `COLORS.emergency.text` | `#F5F7FA` | High-contrast emergency text |
+| `COLORS.emergency.pulseRed` | `#FF3B4E` | Active SOS / cancel-confirmation actions only |
+| `COLORS.emergency.pulseAmber` | `#FFB03B` | Waiting or degraded emergency state |
+| `COLORS.emergency.pulseGreen` | `#3BDB7A` | Confirmed delivery or safe completion |
+
+Emergency mode must be entered only after the user confirms SOS activation. It should use large text, high contrast, a prominent current status, timestamped updates, a call-emergency-services action, and an explicit exit/cancel path when cancellation is permitted.
+
+### 13.3 Typography, spacing, and shape
+
+- Typography scale: title `28`, heading `22`, subheading `17`, body `15`, caption `13` (React Native density-independent pixels).
+- Use `COLORS.ink` for headings and important data; use `COLORS.muted` only for secondary content. Do not use tiny or low-contrast text for health or SOS status.
+- Standard content padding is `20`; card corner radius is `24`; button/input corner radius is `16`.
+- Use an 8-point spacing rhythm around the base tokens: `4`, `8`, `12`, `16`, `20`, `24`, `32`, `40`.
+- Keep interactive controls at least 44 x 44 points, with larger (52–56 point) primary and emergency actions.
+- Use consistent icon sizes: 16 for inline labels, 20 for navigation/actions, 24 for card actions, and 32–42 for key feature or emergency symbols.
+
+### 13.4 Navigation and screen rules
+
+- The login screen is the initial unauthenticated route; authenticated users enter the dashboard. Do not leave a blank root route.
+- The bottom navigation should expose only the primary daily destinations: dashboard, hospitals, wallet, and profile. Secondary views (records, readiness, learning, SOS details) open through clear in-screen actions and include a back affordance.
+- Preserve navigation state after transient network failures; do not return users to login for a single failed API request.
+- Use a consistent detail header with a back action, clear title, and only task-relevant actions.
+- On web, constrain dense content to a readable centred column while retaining responsive full-width emergency controls. Ensure keyboard navigation and visible focus styling.
+
+### 13.5 Feature-level UX requirements
+
+| Feature | Required UI behavior |
+| --- | --- |
+| Login and session | Show clear authentication progress and failure messages. Biometrics unlock a stored session; provide an alternate supported sign-in path. |
+| Dashboard | Present a small set of actionable summary cards: readiness, records, hospitals, and wallet. Each card shows a current value, short explanation, and destination. |
+| Wallet | Separate essential responder-visible facts from private notes. Show cache/last-sync status, edit/save feedback, contact completeness, consent copy, and a QR view with sharing warning. |
+| Medical records | Show file name, type, date, processing state, and safe summary status. Provide upload validation before submission; distinguish queued, processing, complete, and failed OCR. |
+| Hospitals | Ask for location only when needed, explain its use, show a manual location fallback, ranking reasons, travel/freshness information, and a clear disclaimer for unverified availability. |
+| Readiness | Explain the score with completed and missing items. Never present a score without showing the actionable factors behind it. |
+| Learn | Display reviewed content metadata, last review date, emergency disclaimer, and readable article hierarchy. |
+| SOS | Use a confirmation step before activation, haptic/visual acknowledgement after activation, permission and manual-location fallbacks, a timestamped event timeline, per-contact delivery state, retry/help actions, and emergency-call affordance. |
+
+### 13.6 State, feedback, and error design
+
+Every remote-data screen needs deliberate loading, empty, offline, error, and success states.
+
+- **Loading:** use skeleton cards or in-place activity indicators; never replace a whole populated screen with a spinner during refresh.
+- **Empty:** explain what is missing and provide one primary next action (for example, "Add emergency contact").
+- **Offline:** show the cached-data indicator, last successful sync time, and which actions will queue or cannot be completed.
+- **Error:** display a short user-safe message with Retry. Technical details and request IDs belong in logs/support details, not the primary copy.
+- **Success:** show brief inline confirmation after save/upload/notification; do not rely only on a disappearing toast for critical outcomes.
+- **Destructive or high-risk actions:** confirm deletion, logout, SOS cancellation, and irreversible sharing. Put the consequence in the confirmation copy.
+
+### 13.7 Accessibility and inclusive design
+
+- Meet WCAG AA contrast for text and interactive controls; test both Calm and Emergency modes.
+- Support system font scaling without clipped cards, labels, or primary buttons.
+- Provide `accessibilityLabel`, role, state, and hint for icon-only controls, QR sharing, SOS status, and navigation.
+- Keep logical screen-reader and keyboard focus order; move focus to new error/confirmation content where supported.
+- Do not depend on colour, gesture, vibration, audio, or biometrics alone; provide equivalent visual and manual controls.
+- Use clear language and avoid clinical claims. Localize all display strings, dates, numbers, emergency numbers, and phone formats for the target region.
+
+### 13.8 Frontend implementation standards
+
+- Keep tokens in `src/constants/theme.ts`; extend it with named semantic tokens (for example, `textPrimary`, `textSecondary`, `actionPrimary`, `statusSuccess`) before introducing new raw hex values.
+- Build and reuse primitives for `AppButton`, `StatusBadge`, `SummaryCard`, `DetailHeader`, form fields, empty states, loading skeletons, error panels, and offline banners.
+- Keep business/API state in typed services and stores; keep transient UI state (sheet visibility, field focus, animation) local to components.
+- Use Expo environment variables for API endpoints. `EXPO_PUBLIC_API_URL` must use `http://127.0.0.1:8000` for local web development; a physical device must use the computer's LAN address or a secure tunnel, never the device's own `localhost`.
+- Validate and format fields close to the input, but treat server validation/errors as authoritative.
+- Test the same UI on Android, iOS where supported, and web; do not ship a screen that renders blank or has an unresolved route/module dependency.
+
+### 13.9 Backend responsibilities that enable good UX
+
+The backend does not own visual styling, but it must provide predictable state and metadata so the frontend can represent the user experience honestly.
+
+- Return stable resource IDs, ISO 8601 timestamps, explicit lifecycle/status enums, field-level validation errors, and an error `code`, `message`, `details`, and `request_id`.
+- Return freshness timestamps and source/reason data for hospital rankings, readiness scores, OCR results, and notifications.
+- Expose processing/delivery progress without making the client infer completion from request success alone.
+- Support idempotency keys and safe retries for SOS, upload, and notification actions so repeated taps or reconnects do not create misleading duplicate UI states.
+- Configure CORS only for authorised web origins and serve the API over HTTPS outside local development.
+- Never return password hashes, secret tokens, raw private file paths, unnecessary medical details, or data belonging to another user merely to populate a screen.
+
+### 13.10 UI acceptance checklist
+
+- Every screen uses design tokens, supports loading/empty/error/offline states, and is readable at increased text size.
+- Calm and Emergency themes are visually distinct and meet contrast requirements.
+- All status colours have text/icon equivalents and all critical actions have explicit feedback.
+- QR, medical record, location, biometric, and SOS flows explain permission and data-sharing consequences before the action.
+- Browser, Android, and supported iOS builds open every routed screen without a blank screen, 404, or module-resolution error.
+- API responses supply the real timestamps, statuses, errors, and source/freshness metadata shown in the interface.

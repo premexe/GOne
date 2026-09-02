@@ -18,9 +18,12 @@ export interface EmergencyContact {
 export interface EmergencyProfile {
   id: string;
   userId: string;
+  bloodGroup?: string;
   allergies: string[];
   medications: string[];
   conditions: string[];
+  organDonor?: boolean;
+  emergencyNotes?: string;
   emergencyContacts: EmergencyContact[];
 }
 

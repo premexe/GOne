@@ -93,7 +93,7 @@ export const SOSButton: React.FC<SOSButtonProps> = ({ onConfirmSOS, onQuickTap }
         style={styles.buttonCenter}
       >
         {/* SVG Progress Ring */}
-        <Svg width={size} height={size} style={styles.svgRing}>
+        <Svg width={size} height={size} style={[styles.svgRing, { transform: [{ rotate: '-90deg' }] }]}>
           <Circle
             cx={size / 2}
             cy={size / 2}
@@ -112,9 +112,9 @@ export const SOSButton: React.FC<SOSButtonProps> = ({ onConfirmSOS, onQuickTap }
             strokeDashoffset={strokeDashoffset}
             strokeLinecap="round"
             fill="none"
-            transform={`rotate(-90 ${size / 2} ${size / 2})`}
           />
         </Svg>
+
 
         <Siren size={26} color="#FFFFFF" />
         <Text style={styles.sosText}>{isHolding ? 'HOLDING' : 'SOS'}</Text>

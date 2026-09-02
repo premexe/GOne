@@ -1,13 +1,29 @@
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import os
+import logging
 
-# Load environment variables
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+SQLITE_FALLBACK_URL = "sqlite:///./lifelink_ai.db"
 
-engine = create_engine(
-    DATABASE_URL,
-    echo=True  # Shows SQL queries in terminal
-)
+def get_engine():
+    if DATABASE_URL and not DATABASE_URL.startswith("sqlite"):
+        try:
+            # Test PostgreSQL connection with a short timeout
+            test_engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 3})
+            with test_engine.connect() as conn:
+                pass
+            test_engine.dispose()
+            return create_engine(DATABASE_URL, echo=False)
+        except Exception as e:
+            logging.warning(f"PostgreSQL connection failed ({e}). Falling back to SQLite database at {SQLITE_FALLBACK_URL}")
+
+    return create_engine(
+        SQLITE_FALLBACK_URL,
+        connect_args={"check_same_thread": False},
+        echo=False
+    )
+
+engine = get_engine()
