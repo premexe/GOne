@@ -7,7 +7,6 @@ export const INITIAL_USER: User = {
   phone: '+1 (555) 234-5678',
   bloodGroup: 'O+',
   dob: '1992-06-15',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250',
 };
 
 export const INITIAL_EMERGENCY_PROFILE: EmergencyProfile = {

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.database.connection import engine
 from app.database.base import Base
@@ -22,6 +23,17 @@ from app.routers.emergency_orchestration import (
 from app.routers.medical_records import router as medical_records_router
 
 app = FastAPI(title="LifeLink AI API")
+
+# Development origins for Expo web and devices on the local network.
+app.add_middleware(
+    CORSMiddleware,
+    # Local development: permit browser clients on localhost and private LANs.
+    # Expo Go is a native client, but Expo web still needs this CORS policy.
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}):\d+",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.add_middleware(
     CORSMiddleware,

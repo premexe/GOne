@@ -1,27 +1,46 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, ActivityIndicator } from 'react-native';
-import { ShieldCheck, Fingerprint, Lock, ArrowRight } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { ShieldCheck, Fingerprint, ArrowRight } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
 import { useAuthStore } from '../../src/store/useAuthStore';
 
 export default function LoginScreen() {
-  const { loginWithBiometrics, loginAsGuest, isLoading } = useAuthStore();
+  const { loginWithBiometrics, login, register, isLoading } = useAuthStore();
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
 
   const handleBiometricLogin = async () => {
-    const success = await loginWithBiometrics();
-    if (success) {
+    const result = await loginWithBiometrics();
+    if (result.success) {
       router.replace('/(tabs)');
+    } else if (result.message) {
+      Alert.alert('Fingerprint unlock', result.message);
     }
   };
 
-  const handleGuestLogin = async () => {
-    await loginAsGuest();
-    router.replace('/(tabs)');
+  const handleSubmit = async () => {
+    setError('');
+    try {
+      if (isRegistering) await register(name, email, phone, password);
+      else await login(email, password);
+      router.replace('/(tabs)');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to sign in.');
+    }
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.content}>
         {/* Brand App Mark */}
         <View style={styles.logoBadge}>
@@ -70,17 +89,31 @@ export default function LoginScreen() {
           Instant unlock enabled · No passwords required during emergencies
         </Text>
 
-        {/* Guest Demo Login */}
+        {isRegistering && <TextInput value={name} onChangeText={setName} placeholder="Full name" style={styles.input} autoCapitalize="words" />}
+        <TextInput value={email} onChangeText={setEmail} placeholder="Email address" style={styles.input} autoCapitalize="none" keyboardType="email-address" />
+        {isRegistering && <TextInput value={phone} onChangeText={setPhone} placeholder="Phone number" style={styles.input} keyboardType="phone-pad" />}
+        <TextInput value={password} onChangeText={setPassword} placeholder="Password" style={styles.input} secureTextEntry />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         <TouchableOpacity
-          onPress={handleGuestLogin}
+          onPress={handleSubmit}
           disabled={isLoading}
           style={styles.guestButton}
         >
-          <Text style={styles.guestButtonText}>Enter Demo Workspace</Text>
-          <ArrowRight size={16} color={COLORS.brand} />
+          {isLoading ? (
+            <ActivityIndicator color={COLORS.brand} />
+          ) : (
+            <>
+              <Text style={styles.guestButtonText}>{isRegistering ? 'Create account' : 'Sign in'}</Text>
+              <ArrowRight size={16} color={COLORS.brand} />
+            </>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => { setIsRegistering(!isRegistering); setError(''); }}>
+          <Text style={styles.switchText}>{isRegistering ? 'Already have an account? Sign in' : 'New here? Create an account'}</Text>
         </TouchableOpacity>
       </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -88,8 +121,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.bg,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
+    paddingVertical: 28,
   },
   content: {
     alignItems: 'center',
@@ -180,6 +217,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
   },
+  input: { width: '100%', height: 52, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: SPACING.buttonRadius, paddingHorizontal: 16, marginBottom: 10, color: COLORS.ink },
+  error: { width: '100%', color: COLORS.status.red, fontSize: 13, marginBottom: 8 },
+  switchText: { color: COLORS.brand, fontWeight: '700', fontSize: 13, marginTop: 8 },
   guestButtonText: {
     fontSize: 14,
     fontWeight: '700',

@@ -1,4 +1,5 @@
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.users import User
@@ -37,7 +38,19 @@ class UserService:
             profile_photo=user_data.profile_photo
         )
 
-        return UserRepository.create(db, new_user)
+        try:
+            return UserRepository.create(db, new_user)
+        except IntegrityError as exc:
+            db.rollback()
+            # Email and phone number are unique at the database level. Handle a
+            # concurrent/duplicate signup as a user-safe validation error.
+            constraint = str(getattr(exc, 'orig', '')).lower()
+            message = (
+                'This phone number is already registered.'
+                if 'phone' in constraint
+                else 'An account with this email address already exists.'
+            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from exc
 
     @staticmethod
     def get_all_users(db):

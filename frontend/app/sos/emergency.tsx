@@ -44,9 +44,14 @@ export default function EmergencyModeScreen() {
     Linking.openURL(`tel:${icePhone}`);
   };
 
-  const handleEndEmergency = () => {
-    endEmergency();
-    router.replace('/(tabs)');
+  const handleEndEmergency = async () => {
+    try {
+      await endEmergency();
+      router.replace('/(tabs)');
+    } catch (error) {
+      // Keep the active SOS visible if the server could not resolve it.
+      console.warn('Failed to resolve SOS:', error);
+    }
   };
 
   return (

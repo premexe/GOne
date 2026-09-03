@@ -9,6 +9,8 @@ import { useProfileStore } from '../../src/store/useProfileStore';
 import { useRecordStore } from '../../src/store/useRecordStore';
 import { useHospitalStore } from '../../src/store/useHospitalStore';
 
+const profilePhoto = require('../../assets/profile-photo.jpg');
+
 export default function HomeScreen() {
   const user = useAuthStore((s) => s.user);
   const { profile, readinessScore, fetchProfileAndReadiness } = useProfileStore();
@@ -43,11 +45,7 @@ export default function HomeScreen() {
       <View style={styles.headerRow}>
         <View style={styles.userGroup}>
           <Image
-            source={{
-              uri:
-                user?.avatarUrl ||
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250',
-            }}
+            source={user?.avatarUrl ? { uri: user.avatarUrl } : profilePhoto}
             style={styles.avatar}
           />
           <View>
@@ -58,7 +56,7 @@ export default function HomeScreen() {
 
         <TouchableOpacity
           style={styles.bellButton}
-          onPress={() => router.push('/learn')}
+          onPress={() => router.push('/notifications')}
         >
           <Bell size={20} color={COLORS.ink} />
           <View style={styles.bellDot} />

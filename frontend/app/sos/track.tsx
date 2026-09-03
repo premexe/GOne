@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { Navigation, Phone, ShieldCheck, MapPin, CheckCircle2 } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -9,16 +9,16 @@ import { useEmergencyStore } from '../../src/store/useEmergencyStore';
 
 export default function TrackEmergencyScreen() {
   const activeRequest = useEmergencyStore((s) => s.activeRequest);
+  const refreshActiveEmergency = useEmergencyStore((s) => s.refreshActiveEmergency);
   const hospital = activeRequest?.matchedHospital;
 
-  const [simStep, setSimStep] = useState(3); // Default step 3 (Responder assigned)
-
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setSimStep(4); // En route
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, []);
+    refreshActiveEmergency();
+    const timer = setInterval(refreshActiveEmergency, 10000);
+    return () => clearInterval(timer);
+  }, [refreshActiveEmergency]);
+
+  const isResolved = activeRequest?.status === 'closed';
 
   const timelineSteps: StepItem[] = [
     {
@@ -47,14 +47,14 @@ export default function TrackEmergencyScreen() {
       title: 'Responder Unit Assigned',
       subtitle: 'Mobile Intensive Care Unit #104 en-route',
       time: '17:35:20',
-      status: simStep >= 3 ? 'complete' : 'active',
+      status: isResolved ? 'complete' : 'active',
     },
     {
       id: 't5',
       title: 'Arrived at Location',
       subtitle: 'Paramedics on scene for stabilization',
       time: '17:41:00',
-      status: simStep >= 4 ? 'active' : 'pending',
+      status: isResolved ? 'complete' : 'pending',
     },
   ];
 

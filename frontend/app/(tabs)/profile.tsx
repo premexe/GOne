@@ -1,21 +1,53 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Modal } from 'react-native';
-import { User, Phone, Plus, Trash2, Edit2, ShieldCheck, Heart, AlertTriangle, Pill } from 'lucide-react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Modal, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import { User, Phone, Plus, Trash2, Edit2, ShieldCheck, Heart, AlertTriangle, Pill, LogOut } from 'lucide-react-native';
+import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useProfileStore } from '../../src/store/useProfileStore';
 
+const profilePhoto = require('../../assets/profile-photo.jpg');
+
 export default function ProfileScreen() {
-  const { user, updateUser } = useAuthStore();
+  const { user, updateUser, logout } = useAuthStore();
   const { profile, updateProfile, addEmergencyContact, removeEmergencyContact } = useProfileStore();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPatientInfoModalOpen, setIsPatientInfoModalOpen] = useState(false);
   const [contactName, setContactName] = useState('');
   const [contactRelation, setContactRelation] = useState('');
   const [contactPhone, setContactPhone] = useState('');
 
   const [allergyInput, setAllergyInput] = useState('');
   const [medInput, setMedInput] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [bloodGroup, setBloodGroup] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+
+  const openPatientInfoEditor = () => {
+    setFullName(user?.name || '');
+    setBloodGroup(user?.bloodGroup || profile?.bloodGroup || '');
+    setDateOfBirth(user?.dob || '');
+    setPhoneNumber(user?.phone || '');
+    setIsPatientInfoModalOpen(true);
+  };
+
+  const handleSavePatientInfo = async () => {
+    if (!fullName.trim() || !phoneNumber.trim()) {
+      Alert.alert('Missing Fields', 'Please enter your full name and phone number.');
+      return;
+    }
+
+    await updateUser({
+      name: fullName.trim(),
+      bloodGroup: bloodGroup.trim(),
+      dob: dateOfBirth.trim(),
+      phone: phoneNumber.trim(),
+    });
+    if (profile) await updateProfile({ bloodGroup: bloodGroup.trim() });
+    setIsPatientInfoModalOpen(false);
+  };
 
   const handleAddContact = async () => {
     if (!contactName || !contactPhone) {
@@ -55,8 +87,22 @@ export default function ProfileScreen() {
     await updateProfile({ medications: updated });
   };
 
+  const handleSignOut = () => {
+    Alert.alert('Sign out', 'Do you want to sign out from LifeLink AI+ on this device?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        },
+      },
+    ]);
+  };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* Header */}
       <View style={styles.headerRow}>
         <Text style={styles.title}>Emergency Profile</Text>
@@ -65,7 +111,25 @@ export default function ProfileScreen() {
 
       {/* Patient Demographic Card */}
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Basic Patient Info</Text>
+        <View style={styles.patientInfoHeader}>
+          <View style={styles.avatarRow}>
+            <Image
+              source={user?.avatarUrl ? { uri: user.avatarUrl } : profilePhoto}
+              style={styles.profileAvatar}
+              accessibilityLabel="Profile photo"
+            />
+            <Text style={styles.sectionTitle}>Basic Patient Info</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={openPatientInfoEditor}
+            accessibilityRole="button"
+            accessibilityLabel="Edit basic patient information"
+          >
+            <Edit2 size={15} color={COLORS.brand} />
+            <Text style={styles.editButtonText}>Edit</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>Full Name</Text>
@@ -185,9 +249,34 @@ export default function ProfileScreen() {
         ))}
       </View>
 
+      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+        <LogOut size={18} color={COLORS.status.red} />
+        <Text style={styles.signOutText}>Sign out</Text>
+      </TouchableOpacity>
+
       {/* Add Contact Modal */}
+      <Modal visible={isPatientInfoModalOpen} animationType="slide" transparent>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Basic Patient Info</Text>
+            <TextInput style={styles.modalInput} placeholder="Full name" value={fullName} onChangeText={setFullName} />
+            <TextInput style={styles.modalInput} placeholder="Blood group (e.g. O+)" value={bloodGroup} onChangeText={setBloodGroup} autoCapitalize="characters" />
+            <TextInput style={styles.modalInput} placeholder="Date of birth (YYYY-MM-DD)" value={dateOfBirth} onChangeText={setDateOfBirth} />
+            <TextInput style={styles.modalInput} placeholder="Phone number" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={styles.cancelModalBtn} onPress={() => setIsPatientInfoModalOpen(false)}>
+                <Text style={styles.cancelModalText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveModalBtn} onPress={handleSavePatientInfo}>
+                <Text style={styles.saveModalText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <Modal visible={isModalOpen} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add Emergency Contact</Text>
 
@@ -226,7 +315,7 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   );
@@ -267,6 +356,37 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.ink,
     marginBottom: 12,
+  },
+  patientInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  profileAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.surface,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+  },
+  editButtonText: {
+    color: COLORS.brand,
+    fontSize: 13,
+    fontWeight: '800',
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -445,5 +565,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(215, 38, 61, 0.35)',
+    borderRadius: SPACING.buttonRadius,
+    backgroundColor: 'rgba(215, 38, 61, 0.06)',
+    paddingVertical: 14,
+    marginBottom: 20,
+  },
+  signOutText: {
+    color: COLORS.status.red,
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

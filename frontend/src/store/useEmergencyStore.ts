@@ -13,8 +13,8 @@ interface EmergencyState {
   clearSymptoms: () => void;
   setNotes: (text: string) => void;
   triggerSOS: (symptomsList?: string[], userNotes?: string) => Promise<EmergencyRequest>;
-  advanceStatus: (nextStatus: EmergencyRequest['status']) => void;
-  endEmergency: () => void;
+  refreshActiveEmergency: () => Promise<void>;
+  endEmergency: () => Promise<void>;
 }
 
 export const useEmergencyStore = create<EmergencyState>((set, get) => ({
@@ -44,30 +44,23 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
     const request = await api.createEmergencyRequest(symptoms, 19.700, 72.770, notesText);
     set({ activeRequest: request, isLocating: false });
 
-    // Auto-advance simulated emergency steps for live real-time feel
-    setTimeout(() => {
-      get().advanceStatus('matching');
-    }, 1800);
-
-    setTimeout(() => {
-      get().advanceStatus('connected');
-    }, 3800);
-
     return request;
   },
 
-  advanceStatus: (nextStatus) => {
-    const current = get().activeRequest;
-    if (!current) return;
-    set({
-      activeRequest: {
-        ...current,
-        status: nextStatus,
-      },
-    });
+  refreshActiveEmergency: async () => {
+    try {
+      const activeRequest = await api.getActiveEmergencyRequest();
+      set({ activeRequest, isEmergencyActive: Boolean(activeRequest) });
+    } catch (error) {
+      console.warn('Failed to refresh SOS status:', error);
+    }
   },
 
-  endEmergency: () => {
+  endEmergency: async () => {
+    const activeRequest = get().activeRequest;
+    if (activeRequest?.id) {
+      await api.resolveEmergencyRequest(activeRequest.id);
+    }
     set({
       isEmergencyActive: false,
       activeRequest: null,

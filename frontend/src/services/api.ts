@@ -18,6 +18,9 @@ import {
 import { rankHospitalsForEmergency } from './recommendationEngine';
 import { calculateReadinessScore, classifySymptomUrgency, summarizeMedicalDocument } from './aiService';
 import { getToken, request, setToken } from './http';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const AUTH_TOKEN_KEY = 'lifelink_access_token';
 
 type BackendUser = {
   user_id: number;
@@ -62,30 +65,46 @@ let currentDocuments: MedicalDocument[] = [...SAMPLE_DOCUMENTS];
 let currentHospitals: Hospital[] = [...SAMPLE_HOSPITALS];
 let currentEmergencyRequests: EmergencyRequest[] = [];
 
+type UploadFile = {
+  uri: string;
+  name: string;
+  mimeType?: string | null;
+};
+
+type BackendSOS = {
+  sos_id: number;
+  user_id: number;
+  description: string | null;
+  status: string;
+  created_at: string;
+};
+
+function toEmergencyRequest(sos: BackendSOS): EmergencyRequest {
+  return {
+    id: String(sos.sos_id),
+    userId: String(sos.user_id),
+    hospitalId: null,
+    status: sos.status === 'RESOLVED' ? 'closed' : 'connected',
+    symptoms: [],
+    urgencyTier: 'high',
+    createdAt: sos.created_at,
+    notes: sos.description || undefined,
+  };
+}
+
 export const api = {
   // Auth
   async login(email: string, password: string): Promise<User> {
-    try {
-      const result = await request('/users/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      });
-
-      setToken(result.access_token);
-
-      const userId = getUserIdFromToken(result.access_token);
-      const backendUser = await request(`/users/${userId}`) as BackendUser;
-      currentUser = toUser(backendUser);
-      return currentUser;
-    } catch (err) {
-      console.warn('Backend login failed, using guest mode fallback:', err);
-      return currentUser;
-    }
+    const result = await request('/users/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    setToken(result.access_token);
+    await AsyncStorage.setItem(AUTH_TOKEN_KEY, result.access_token);
+    const backendUser = await request(`/users/${getUserIdFromToken(result.access_token)}`) as BackendUser;
+    currentUser = toUser(backendUser);
+    return currentUser;
   },
 
   async register(name: string, email: string, phone: string, password: string): Promise<User> {
-    try {
-      const newUser = await request('/users/', {
+    await request('/users/', {
         method: 'POST',
         body: JSON.stringify({
           full_name: name,
@@ -93,14 +112,28 @@ export const api = {
           phone_number: phone,
           password,
         }),
-      }) as BackendUser;
-      currentUser = toUser(newUser);
+      });
+    return this.login(email, password);
+  },
+
+  async restoreSession(): Promise<User | null> {
+    const savedToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+    if (!savedToken) return null;
+    setToken(savedToken);
+    try {
+      const backendUser = await request(`/users/${getUserIdFromToken(savedToken)}`) as BackendUser;
+      currentUser = toUser(backendUser);
       return currentUser;
-    } catch (err) {
-      console.warn('Backend register failed, using local profile fallback:', err);
-      currentUser = { ...currentUser, name, email, phone };
-      return currentUser;
+    } catch {
+      setToken(null);
+      await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+      return null;
     }
+  },
+
+  async logout(): Promise<void> {
+    setToken(null);
+    await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
   },
 
   async getMe(): Promise<User> {
@@ -123,14 +156,15 @@ export const api = {
     try {
       const userId = Number(currentUser.id);
       if (Number.isInteger(userId) && getToken()) {
+        const payload: Record<string, string> = {
+          full_name: currentUser.name,
+          phone_number: currentUser.phone,
+        };
+        if (currentUser.bloodGroup) payload.blood_group = currentUser.bloodGroup;
+        if (currentUser.dob) payload.date_of_birth = currentUser.dob;
         await request(`/users/${userId}`, {
           method: 'PUT',
-          body: JSON.stringify({
-            full_name: currentUser.name,
-            phone_number: currentUser.phone,
-            blood_group: currentUser.bloodGroup,
-            date_of_birth: currentUser.dob,
-          }),
+          body: JSON.stringify(payload),
         });
       }
     } catch (err) {
@@ -193,13 +227,30 @@ export const api = {
     return currentProfile;
   },
 
+  async createEmergencyContact(name: string, relation: string, phone: string) {
+    const contact = await request('/emergency-contacts/', {
+      method: 'POST',
+      body: JSON.stringify({ name, relationship: relation, phone_number: phone, is_primary: false }),
+    });
+    return {
+      id: String(contact.contact_id),
+      name: contact.name,
+      relation: contact.relationship || '',
+      phone: contact.phone_number,
+    };
+  },
+
+  async deleteEmergencyContact(contactId: string): Promise<void> {
+    await request(`/emergency-contacts/${contactId}`, { method: 'DELETE' });
+  },
+
   // Documents
   async getDocuments(): Promise<MedicalDocument[]> {
     try {
       const userId = Number(currentUser.id);
       if (Number.isInteger(userId) && getToken()) {
         const backendDocs = await request(`/medical-records/${userId}`);
-        if (Array.isArray(backendDocs) && backendDocs.length > 0) {
+        if (Array.isArray(backendDocs)) {
           currentDocuments = backendDocs.map((d: any) => ({
             id: String(d.record_id),
             userId: String(d.user_id),
@@ -226,7 +277,7 @@ export const api = {
 
   async uploadDocument(
     title: string,
-    fileUrl: string,
+    file: UploadFile,
     docType: 'report' | 'prescription' | 'scan' | 'other'
   ): Promise<MedicalDocument> {
     const summary = await summarizeMedicalDocument(title, docType);
@@ -234,7 +285,7 @@ export const api = {
       id: `doc-${Date.now()}`,
       userId: currentUser.id,
       title,
-      fileUrl,
+      fileUrl: file.uri,
       docType,
       uploadedAt: new Date().toISOString(),
       aiSummary: summary,
@@ -247,9 +298,17 @@ export const api = {
         formData.append('title', title);
         formData.append('record_type', docType);
         
-        // Mock blob for web/expo file upload if string path
-        const fileBlob = new Blob(['sample file content'], { type: 'text/plain' });
-        formData.append('file', fileBlob, `${title.replace(/\s+/g, '_')}.txt`);
+        // React Native accepts a URI-based file object; browser builds use Blob.
+        if (typeof window === 'undefined') {
+          formData.append('file', {
+            uri: file.uri,
+            name: file.name,
+            type: file.mimeType || 'application/octet-stream',
+          } as unknown as Blob);
+        } else {
+          const blob = await (await fetch(file.uri)).blob();
+          formData.append('file', blob, file.name);
+        }
 
         const created = await request('/medical-records/upload', {
           method: 'POST',
@@ -326,17 +385,26 @@ export const api = {
 
     try {
       if (getToken()) {
+        const description = [symptoms.length ? `Symptoms: ${symptoms.join(', ')}` : '', notes || '']
+          .filter(Boolean)
+          .join('\n');
         const sosResponse = await request('/emergency/trigger', {
           method: 'POST',
           body: JSON.stringify({
             latitude: userLat,
             longitude: userLng,
-            symptoms,
-            notes,
+            description,
           }),
         });
         if (sosResponse && sosResponse.sos) {
-          newRequest.id = String(sosResponse.sos.sos_id);
+          newRequest = {
+            ...newRequest,
+            ...toEmergencyRequest(sosResponse.sos),
+            symptoms,
+            urgencyTier: triage.urgencyTier,
+            matchedHospital: topMatch,
+            responderEtaMinutes: topMatch?.etaMinutes || 6,
+          };
         }
       }
     } catch (err) {
@@ -349,6 +417,32 @@ export const api = {
 
   async getEmergencyRequest(id: string): Promise<EmergencyRequest | undefined> {
     return currentEmergencyRequests.find((r) => r.id === id);
+  },
+
+  async getActiveEmergencyRequest(): Promise<EmergencyRequest | null> {
+    const sos = await request('/sos/my-active') as BackendSOS | null;
+    return sos ? toEmergencyRequest(sos) : null;
+  },
+
+  async resolveEmergencyRequest(sosId: string): Promise<void> {
+    await request(`/sos/${sosId}/resolve`, { method: 'PUT' });
+  },
+
+  async getNotifications() {
+    return request('/notifications/') as Promise<Array<{
+      notification_id: number;
+      message: string;
+      status: string;
+      channel: string;
+      created_at: string;
+    }>>;
+  },
+
+  async markNotificationRead(notificationId: number): Promise<void> {
+    await request(`/notifications/${notificationId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'READ' }),
+    });
   },
 
   // Readiness Score

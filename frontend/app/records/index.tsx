@@ -5,20 +5,33 @@ import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
 import { DetailHeader } from '../../src/components/DetailHeader';
 import { useRecordStore } from '../../src/store/useRecordStore';
+import * as DocumentPicker from 'expo-document-picker';
+import { useEffect } from 'react';
 
 export default function RecordsScreen() {
   const { documents, uploadDocument, isUploading } = useRecordStore();
 
+  useEffect(() => {
+    useRecordStore.getState().fetchDocuments();
+  }, []);
+
   const handleUploadNew = async () => {
     try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const file = result.assets[0];
+      const title = file.name.replace(/\.[^.]+$/, '') || 'Medical record';
       await uploadDocument(
-        'Cardiology & Echocardiogram Assessment Report',
-        'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+        title,
+        { uri: file.uri, name: file.name, mimeType: file.mimeType },
         'report'
       );
-      Alert.alert('AI Processing Complete', 'New document analyzed and synchronized to Emergency Wallet.');
+      Alert.alert('Upload complete', 'Your medical record was saved securely. OCR processing will run in the background when supported.');
     } catch (e) {
-      Alert.alert('Upload Error', 'Could not process document.');
+      Alert.alert('Upload Error', e instanceof Error ? e.message : 'Could not upload the document.');
     }
   };
 

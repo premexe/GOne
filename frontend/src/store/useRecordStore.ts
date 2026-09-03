@@ -11,7 +11,7 @@ interface RecordState {
   fetchDocuments: () => Promise<void>;
   uploadDocument: (
     title: string,
-    fileUrl: string,
+    file: { uri: string; name: string; mimeType?: string | null },
     docType: MedicalDocument['docType']
   ) => Promise<MedicalDocument>;
 }
@@ -31,10 +31,10 @@ export const useRecordStore = create<RecordState>((set, get) => ({
     }
   },
 
-  uploadDocument: async (title, fileUrl, docType) => {
+  uploadDocument: async (title, file, docType) => {
     set({ isUploading: true });
     try {
-      const newDoc = await api.uploadDocument(title, fileUrl, docType);
+      const newDoc = await api.uploadDocument(title, file, docType);
       const docs = await api.getDocuments();
       set({ documents: docs, isUploading: false });
 

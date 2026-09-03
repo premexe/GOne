@@ -50,21 +50,20 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   addEmergencyContact: async (name, relation, phone) => {
     const current = get().profile;
     if (!current) return;
-    const newContact = {
-      id: `c-${Date.now()}`,
-      name,
-      relation,
-      phone,
-    };
+    const newContact = await api.createEmergencyContact(name, relation, phone);
     const updatedContacts = [...current.emergencyContacts, newContact];
-    await get().updateProfile({ emergencyContacts: updatedContacts });
+    const updated = { ...current, emergencyContacts: updatedContacts };
+    await AsyncStorage.setItem(WALLET_CACHE_KEY, JSON.stringify(updated));
+    set({ profile: updated });
   },
 
   removeEmergencyContact: async (id) => {
     const current = get().profile;
     if (!current) return;
-    const updatedContacts = current.emergencyContacts.filter((c) => c.id !== id);
-    await get().updateProfile({ emergencyContacts: updatedContacts });
+    await api.deleteEmergencyContact(id);
+    const updated = { ...current, emergencyContacts: current.emergencyContacts.filter((c) => c.id !== id) };
+    await AsyncStorage.setItem(WALLET_CACHE_KEY, JSON.stringify(updated));
+    set({ profile: updated });
   },
 
   loadCachedWallet: async () => {

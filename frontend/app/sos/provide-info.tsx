@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import { Siren, Mic, CheckCircle2, ArrowRight, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
 import { useEmergencyStore } from '../../src/store/useEmergencyStore';
+import { isSpeechRecognitionAvailable, startSpeechRecognition } from '../../src/services/speechRecognition';
 
 export default function ProvideInfoScreen() {
   const { selectedSymptoms, toggleSymptom, setNotes, notes, triggerSOS } = useEmergencyStore();
   const [isRecording, setIsRecording] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
 
   const symptomChips = [
     'Chest Pain / Tightness',
@@ -28,17 +31,33 @@ export default function ProvideInfoScreen() {
   };
 
   const handleVoiceRecordToggle = () => {
-    setIsRecording(!isRecording);
-    if (!isRecording) {
-      setTimeout(() => {
-        setNotes('Voice Note Transcribed: "Patient reporting acute left chest tightness and shortness of breath."');
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    if (!isSpeechRecognitionAvailable()) {
+      setVoiceError('Live transcription is unavailable on this device. Use Chrome on web or enter symptom details below.');
+      return;
+    }
+
+    setVoiceError(null);
+    const recognition = startSpeechRecognition({
+      onTranscript: setNotes,
+      onEnd: () => {
+        recognitionRef.current = null;
         setIsRecording(false);
-      }, 2500);
+      },
+      onError: (message) => setVoiceError(message),
+    });
+    if (recognition) {
+      recognitionRef.current = recognition;
+      setIsRecording(true);
     }
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* Top Header */}
       <View style={styles.headerRow}>
         <View style={styles.emergencyTag}>
@@ -82,6 +101,8 @@ export default function ProvideInfoScreen() {
         <TouchableOpacity
           onPress={handleVoiceRecordToggle}
           style={[styles.micButton, isRecording && styles.recordingMic]}
+          accessibilityRole="button"
+          accessibilityLabel={isRecording ? 'Stop voice transcription' : 'Start voice transcription'}
         >
           <Mic size={24} color="#FFFFFF" />
           <Text style={styles.micButtonText}>
@@ -89,9 +110,25 @@ export default function ProvideInfoScreen() {
           </Text>
         </TouchableOpacity>
 
+        <Text style={styles.voiceHint}>Uses live speech recognition. Review the text before sending an SOS.</Text>
+
+        {voiceError ? <Text style={styles.voiceError}>{voiceError}</Text> : null}
+
+        <View style={styles.notesOutputBox}>
+          <TextInput
+            style={styles.notesInput}
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Your voice transcription will appear here. You can edit it."
+            placeholderTextColor={COLORS.muted}
+            multiline
+            accessibilityLabel="Voice note transcription"
+          />
+        </View>
+
         {notes ? (
           <View style={styles.notesOutputBox}>
-            <Text style={styles.notesOutputText}>{notes}</Text>
+            <Text style={styles.notesOutputText}>Review the transcribed details for accuracy before continuing.</Text>
           </View>
         ) : null}
       </View>
@@ -205,6 +242,19 @@ const styles = StyleSheet.create({
     color: COLORS.ink,
     marginBottom: 12,
   },
+  voiceHint: {
+    marginTop: 10,
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  voiceError: {
+    marginTop: 10,
+    color: COLORS.status.red,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
   micButton: {
     backgroundColor: COLORS.brand,
     paddingVertical: 14,
@@ -229,6 +279,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+  notesInput: {
+    minHeight: 56,
+    color: COLORS.ink,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlignVertical: 'top',
   },
   notesOutputText: {
     fontSize: 12,
