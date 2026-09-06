@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import { User } from '../types';
 import { api } from '../services/api';
 
@@ -20,6 +21,10 @@ interface AuthState {
 const BIOMETRIC_LOGIN_KEY = 'lifelink_biometric_login';
 
 async function rememberBiometricLogin(email: string, password: string) {
+  // SecureStore's native implementation is not available in Expo web builds.
+  // Do not place reusable passwords in browser storage; biometric unlock is a
+  // native-only convenience while normal web sessions use the access token.
+  if (Platform.OS === 'web') return;
   await SecureStore.setItemAsync(BIOMETRIC_LOGIN_KEY, JSON.stringify({ email, password }));
 }
 
@@ -32,6 +37,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loginWithBiometrics: async () => {
     set({ isLoading: true });
     try {
+      if (Platform.OS === 'web') {
+        set({ isLoading: false });
+        return {
+          success: false,
+          message: 'Biometric unlock is available in the LifeLink mobile app. Please sign in with your email and password on web.',
+        };
+      }
+
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
 
