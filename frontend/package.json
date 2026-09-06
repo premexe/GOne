@@ -6,7 +6,8 @@
     "start": "npx --node-options=\"--max-old-space-size=8192\" expo start",
     "android": "npx --node-options=\"--max-old-space-size=8192\" expo start --android",
     "ios": "npx --node-options=\"--max-old-space-size=8192\" expo start --ios",
-    "web": "npx --node-options=\"--max-old-space-size=8192\" expo start --web"
+    "web": "npx --node-options=\"--max-old-space-size=8192\" expo start --web",
+    "build": "npx expo export -p web"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
