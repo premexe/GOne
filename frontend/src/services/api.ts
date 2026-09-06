@@ -345,11 +345,30 @@ export const api = {
     lng: number = 72.770,
     specialty?: string
   ): Promise<Hospital[]> {
+    try {
+      const backendHospitals = await request('/hospitals');
+      if (Array.isArray(backendHospitals) && backendHospitals.length > 0) {
+        currentHospitals = backendHospitals.map((h: any) => ({
+          id: String(h.hospital_id || h.id),
+          name: h.name || h.hospital_name || 'Medical Center',
+          lat: h.latitude || h.lat || 19.700,
+          lng: h.longitude || h.lng || 72.770,
+          specialties: h.specialties || ['general', 'emergency', 'icu'],
+          bedCapacity: h.total_beds || h.bedCapacity || 100,
+          availableBeds: h.icu_beds !== undefined ? h.icu_beds : (h.availableBeds || 10),
+          contact: h.phone_number || h.contact || '+1 800-555-0199',
+          address: h.address || 'Medical District',
+          rating: h.rating || 4.8,
+        }));
+      }
+    } catch (err) {
+      console.warn('Could not fetch hospitals from backend, using default list:', err);
+    }
     return rankHospitalsForEmergency(currentHospitals, lat, lng, specialty);
   },
 
   async getHospitalById(id: string): Promise<Hospital | undefined> {
-    const ranked = rankHospitalsForEmergency(currentHospitals, 19.700, 72.770);
+    const ranked = await this.getNearbyHospitals(19.700, 72.770);
     return ranked.find((h) => h.id === id);
   },
 
