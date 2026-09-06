@@ -13,8 +13,8 @@ function getExpoGoApiUrl(): string | null {
 
 // In Expo Go development, this follows the laptop's current Wi-Fi IP
 // automatically. A fixed EXPO_PUBLIC_API_URL is used only for web/production.
-const API_URL = (__DEV__ ? getExpoGoApiUrl() : null)
-  || process.env.EXPO_PUBLIC_API_URL
+const API_URL = process.env.EXPO_PUBLIC_API_URL
+  || (__DEV__ ? getExpoGoApiUrl() : null)
   || 'http://127.0.0.1:8000';
 
 let token: string | null = null;
