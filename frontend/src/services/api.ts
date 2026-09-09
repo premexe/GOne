@@ -76,19 +76,122 @@ type BackendSOS = {
   user_id: number;
   description: string | null;
   status: string;
+  dispatch_status?: string | null;
+  accepted_hospital_id?: number | null;
+  assigned_ambulance_id?: number | null;
+  assigned_doctor_id?: number | null;
+  patient_name?: string | null;
+  patient_phone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   created_at: string;
+  hospital?: {
+    hospital_id: number;
+    name: string;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+    phone_number?: string;
+    total_beds?: number;
+    icu_beds?: number;
+    oxygen_beds?: number;
+  } | null;
+  ambulance?: {
+    ambulance_id: number;
+    vehicle_number: string;
+    driver_name?: string;
+    driver_phone?: string;
+    status: string;
+  } | null;
+  doctor?: {
+    doctor_id: number;
+    name: string;
+    specialization?: string;
+    department?: string;
+    phone?: string;
+  } | null;
 };
 
-function toEmergencyRequest(sos: BackendSOS): EmergencyRequest {
+function toEmergencyRequest(sos: BackendSOS, cachedMatch?: Hospital): EmergencyRequest {
+  const isResolved = sos.status === 'RESOLVED' || sos.dispatch_status === 'COMPLETED';
+  const isAccepted = Boolean(sos.accepted_hospital_id) || sos.status === 'ACCEPTED' || sos.dispatch_status === 'ACCEPTED' || sos.dispatch_status === 'AMBULANCE_ASSIGNED' || sos.dispatch_status === 'EN_ROUTE';
+
+  let matchedHosp: Hospital | undefined = cachedMatch;
+  if (sos.hospital) {
+    matchedHosp = {
+      id: String(sos.hospital.hospital_id),
+      name: sos.hospital.name,
+      lat: sos.hospital.latitude || 19.7,
+      lng: sos.hospital.longitude || 72.77,
+      address: sos.hospital.address || 'Medical District',
+      contact: sos.hospital.phone_number || '+1 800-555-0199',
+      specialties: ['General Medicine', 'Emergency Care', 'ICU'],
+      bedCapacity: sos.hospital.total_beds || 100,
+      availableBeds: sos.hospital.icu_beds || 20,
+      distanceKm: 2.4,
+      etaMinutes: 5,
+      recommendationReason: 'Confirmed Emergency Admission by ER Team',
+    };
+  }
+
+  let assignedAmb = undefined;
+  if (sos.ambulance) {
+    assignedAmb = {
+      id: String(sos.ambulance.ambulance_id),
+      vehicleNumber: sos.ambulance.vehicle_number,
+      driverName: sos.ambulance.driver_name || 'Assigned Paramedic',
+      driverPhone: sos.ambulance.driver_phone || matchedHosp?.contact || '+1 800-555-0199',
+      status: sos.ambulance.status || 'EN_ROUTE',
+    };
+  } else if (sos.assigned_ambulance_id) {
+    assignedAmb = {
+      id: String(sos.assigned_ambulance_id),
+      vehicleNumber: `AMB-${sos.assigned_ambulance_id}`,
+      driverName: 'Assigned Paramedic',
+      driverPhone: matchedHosp?.contact || '+1 800-555-0199',
+      status: 'EN_ROUTE',
+    };
+  }
+
+  let assignedDoc = undefined;
+  if (sos.doctor) {
+    assignedDoc = {
+      id: String(sos.doctor.doctor_id),
+      name: sos.doctor.name,
+      specialization: sos.doctor.specialization || 'Emergency Specialist',
+      department: sos.doctor.department,
+      phone: sos.doctor.phone,
+    };
+  }
+
+  let appStatus: 'locating' | 'matching' | 'connected' | 'en_route' | 'arrived' | 'closed' = 'connected';
+  if (isResolved) {
+    appStatus = 'closed';
+  } else if (sos.dispatch_status === 'EN_ROUTE' || sos.dispatch_status === 'AMBULANCE_ASSIGNED') {
+    appStatus = 'en_route';
+  } else if (sos.dispatch_status === 'ARRIVED') {
+    appStatus = 'arrived';
+  } else if (isAccepted) {
+    appStatus = 'connected';
+  }
+
   return {
     id: String(sos.sos_id),
     userId: String(sos.user_id),
-    hospitalId: null,
-    status: sos.status === 'RESOLVED' ? 'closed' : 'connected',
+    hospitalId: sos.accepted_hospital_id ? String(sos.accepted_hospital_id) : (matchedHosp ? matchedHosp.id : null),
+    status: appStatus,
+    dispatchStatus: sos.dispatch_status || sos.status,
     symptoms: [],
-    urgencyTier: 'high',
+    urgencyTier: 'critical',
     createdAt: sos.created_at,
     notes: sos.description || undefined,
+    matchedHospital: matchedHosp,
+    acceptedHospital: matchedHosp,
+    assignedAmbulance: assignedAmb,
+    assignedDoctor: assignedDoc,
+    responderEtaMinutes: 5,
+    userLatitude: sos.latitude || 19.076,
+    userLongitude: sos.longitude || 72.877,
   };
 }
 
@@ -348,18 +451,30 @@ export const api = {
     try {
       const backendHospitals = await request('/hospitals');
       if (Array.isArray(backendHospitals) && backendHospitals.length > 0) {
-        currentHospitals = backendHospitals.map((h: any) => ({
-          id: String(h.hospital_id || h.id),
-          name: h.name || h.hospital_name || 'Medical Center',
-          lat: h.latitude || h.lat || 19.700,
-          lng: h.longitude || h.lng || 72.770,
-          specialties: h.specialties || ['general', 'emergency', 'icu'],
-          bedCapacity: h.total_beds || h.bedCapacity || 100,
-          availableBeds: h.icu_beds !== undefined ? h.icu_beds : (h.availableBeds || 10),
-          contact: h.phone_number || h.contact || '+1 800-555-0199',
-          address: h.address || 'Medical District',
-          rating: h.rating || 4.8,
-        }));
+        currentHospitals = backendHospitals.map((h: any) => {
+          const genTotal = h.total_beds ?? 100;
+          const genOcc = h.general_occupied ?? 0;
+          const icuTotal = h.icu_beds ?? 20;
+          const icuOcc = h.icu_occupied ?? 0;
+          const emTotal = h.oxygen_beds ?? 15;
+          const emOcc = h.emergency_occupied ?? 0;
+
+          return {
+            id: String(h.hospital_id || h.id),
+            name: h.name || h.hospital_name || 'Medical Center',
+            lat: h.latitude || h.lat || 19.700,
+            lng: h.longitude || h.lng || 72.770,
+            specialties: h.specialties || ['General Medicine', 'Emergency Care', 'Critical ICU'],
+            bedCapacity: genTotal + icuTotal + emTotal,
+            availableBeds: Math.max(0, genTotal - genOcc) + Math.max(0, icuTotal - icuOcc) + Math.max(0, emTotal - emOcc),
+            generalBeds: { total: genTotal, occupied: genOcc, available: Math.max(0, genTotal - genOcc) },
+            icuBeds: { total: icuTotal, occupied: icuOcc, available: Math.max(0, icuTotal - icuOcc) },
+            emergencyBeds: { total: emTotal, occupied: emOcc, available: Math.max(0, emTotal - emOcc) },
+            contact: h.phone_number || h.contact || '+1 800-555-0199',
+            address: h.address || 'Medical District',
+            rating: h.rating || 4.8,
+          };
+        });
       }
     } catch (err) {
       console.warn('Could not fetch hospitals from backend, using default list:', err);

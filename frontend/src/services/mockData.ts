@@ -12,6 +12,9 @@ export const INITIAL_USER: User = {
 export const INITIAL_EMERGENCY_PROFILE: EmergencyProfile = {
   id: 'ep101',
   userId: 'u101',
+  bloodGroup: 'O+',
+  organDonor: true,
+  emergencyNotes: 'Carry inhaler at all times',
   allergies: ['Penicillin', 'Peanuts', 'Sulfa Drugs'],
   medications: ['Lisinopril 10mg daily', 'Albuterol Inhaler (PRN)'],
   conditions: ['Mild Asthma', 'Hypertension (Controlled)'],

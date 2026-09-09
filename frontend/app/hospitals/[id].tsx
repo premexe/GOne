@@ -1,25 +1,52 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import { MapPin, Phone, Navigation, Bed, ShieldCheck, CheckCircle2 } from 'lucide-react-native';
-import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
+import { useLocalSearchParams, router } from 'expo-router';
+import { Phone, Navigation, Bed, ShieldCheck, CheckCircle2, HeartPulse, Activity } from 'lucide-react-native';
+import { COLORS, SPACING, TYPOGRAPHY } from '../../src/constants/theme';
 import { DetailHeader } from '../../src/components/DetailHeader';
-import { useHospitalStore } from '../../src/store/useHospitalStore';
+import { api } from '../../src/services/api';
+import { Hospital } from '../../src/types';
 
 export default function HospitalDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const hospitals = useHospitalStore((s) => s.hospitals);
-  const hospital = hospitals.find((h) => h.id === id) || hospitals[0];
+  const [hospital, setHospital] = useState<Hospital | null>(null);
 
-  if (!hospital) return null;
+  useEffect(() => {
+    if (id) {
+      api.getHospitalById(id).then((h) => {
+        if (h) setHospital(h);
+      });
+    }
+  }, [id]);
+
+  if (!hospital) {
+    return (
+      <View style={styles.container}>
+        <DetailHeader title="Hospital Details" />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Fetching live hospital telemetry...</Text>
+        </View>
+      </View>
+    );
+  }
 
   const handleCall = () => {
     Linking.openURL(`tel:${hospital.contact}`);
   };
 
   const handleNavigate = () => {
-    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${hospital.lat},${hospital.lng}`);
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${hospital.lat},${hospital.lng}`;
+    Linking.openURL(url);
   };
+
+  const generalAvail = hospital.generalBeds?.available ?? Math.max(0, hospital.bedCapacity - 20);
+  const generalTotal = hospital.generalBeds?.total ?? hospital.bedCapacity;
+
+  const icuAvail = hospital.icuBeds?.available ?? hospital.availableBeds;
+  const icuTotal = hospital.icuBeds?.total ?? 40;
+
+  const emAvail = hospital.emergencyBeds?.available ?? 40;
+  const emTotal = hospital.emergencyBeds?.total ?? 40;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -37,7 +64,9 @@ export default function HospitalDetailScreen() {
           </View>
           <View style={styles.metricPill}>
             <Bed size={14} color={COLORS.status.green} />
-            <Text style={styles.metricPillText}>{hospital.availableBeds} / {hospital.bedCapacity} Beds Open</Text>
+            <Text style={styles.metricPillText}>
+              {hospital.availableBeds} / {hospital.bedCapacity} Total Beds Open
+            </Text>
           </View>
         </View>
 
@@ -52,6 +81,37 @@ export default function HospitalDetailScreen() {
             <Navigation size={18} color={COLORS.brand} />
             <Text style={styles.navButtonText}>Navigate GPS</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Live Operational Bed Telemetry Breakdown */}
+      <View style={styles.sectionCard}>
+        <View style={styles.sectionHeaderRow}>
+          <Activity size={18} color={COLORS.brand} />
+          <Text style={styles.sectionTitle}>Live Bed Availability (Supabase)</Text>
+        </View>
+
+        <View style={styles.bedsGrid}>
+          {/* General Beds */}
+          <View style={styles.bedCard}>
+            <Text style={styles.bedLabel}>GENERAL BEDS</Text>
+            <Text style={styles.bedCount}>{generalAvail}</Text>
+            <Text style={styles.bedSub}>of {generalTotal} capacity</Text>
+          </View>
+
+          {/* ICU Beds */}
+          <View style={[styles.bedCard, { borderColor: 'rgba(239, 68, 68, 0.3)' }]}>
+            <Text style={[styles.bedLabel, { color: COLORS.emergency.pulseRed }]}>ICU BEDS</Text>
+            <Text style={[styles.bedCount, { color: COLORS.emergency.pulseRed }]}>{icuAvail}</Text>
+            <Text style={styles.bedSub}>of {icuTotal} capacity</Text>
+          </View>
+
+          {/* Emergency Beds */}
+          <View style={[styles.bedCard, { borderColor: 'rgba(245, 158, 11, 0.3)' }]}>
+            <Text style={[styles.bedLabel, { color: COLORS.emergency.pulseAmber }]}>EMERGENCY</Text>
+            <Text style={[styles.bedCount, { color: COLORS.emergency.pulseAmber }]}>{emAvail}</Text>
+            <Text style={styles.bedSub}>of {emTotal} capacity</Text>
+          </View>
         </View>
       </View>
 
@@ -90,6 +150,14 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: 40,
   },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: COLORS.muted,
+    fontSize: 14,
+  },
   bannerCard: {
     backgroundColor: COLORS.hospitals.bg,
     borderRadius: SPACING.cardRadius,
@@ -120,9 +188,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 14,
+    borderRadius: 12,
   },
   metricPillText: {
     fontSize: 12,
@@ -131,13 +199,13 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
   callButton: {
     flex: 1,
     height: 48,
     borderRadius: 14,
-    backgroundColor: COLORS.status.red,
+    backgroundColor: COLORS.status.green,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -153,21 +221,19 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 14,
     backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: COLORS.brand,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    borderWidth: 1,
-    borderColor: COLORS.brand,
   },
   navButtonText: {
     color: COLORS.brand,
     fontSize: 14,
     fontWeight: '700',
   },
-  aiReasonCard: {
-    flexDirection: 'row',
-    gap: 12,
+  sectionCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: SPACING.cardRadius,
     padding: SPACING.padding,
@@ -176,49 +242,85 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  aiReasonTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.ink,
-    marginBottom: 2,
-  },
-  aiReasonBody: {
-    fontSize: 13,
-    color: COLORS.muted,
-    lineHeight: 18,
-  },
-  sectionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: SPACING.cardRadius,
-    padding: SPACING.padding,
-    marginHorizontal: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
   },
   sectionTitle: {
     fontSize: 15,
     fontWeight: '800',
     color: COLORS.ink,
-    marginBottom: 12,
+  },
+  bedsGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  bedCard: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  bedLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.muted,
+    marginBottom: 4,
+  },
+  bedCount: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: COLORS.ink,
+  },
+  bedSub: {
+    fontSize: 10,
+    color: COLORS.muted,
+    marginTop: 2,
+  },
+  aiReasonCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: SPACING.cardRadius,
+    padding: SPACING.padding,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 163, 61, 0.3)',
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  aiReasonTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.ink,
+    marginBottom: 2,
+  },
+  aiReasonBody: {
+    fontSize: 12,
+    color: COLORS.muted,
+    lineHeight: 18,
   },
   specialtyGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
   },
   specialtyChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.bg,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderRadius: 10,
   },
   specialtyChipText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: COLORS.ink,
   },

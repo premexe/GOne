@@ -17,6 +17,8 @@ interface EmergencyState {
   endEmergency: () => Promise<void>;
 }
 
+let pollingTimer: any = null;
+
 export const useEmergencyStore = create<EmergencyState>((set, get) => ({
   isEmergencyActive: false,
   activeRequest: null,
@@ -41,8 +43,19 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
     const symptoms = symptomsList || get().selectedSymptoms;
     const notesText = userNotes || get().notes;
 
-    const request = await api.createEmergencyRequest(symptoms, 19.700, 72.770, notesText);
+    const request = await api.createEmergencyRequest(symptoms, 19.076, 72.877, notesText);
     set({ activeRequest: request, isLocating: false });
+
+    // Start 3-second live polling loop for real-time hospital acceptance & ambulance dispatch
+    if (pollingTimer) clearInterval(pollingTimer);
+    pollingTimer = setInterval(async () => {
+      if (!get().isEmergencyActive) {
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+        return;
+      }
+      await get().refreshActiveEmergency();
+    }, 3000);
 
     return request;
   },
@@ -50,13 +63,21 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
   refreshActiveEmergency: async () => {
     try {
       const activeRequest = await api.getActiveEmergencyRequest();
-      set({ activeRequest, isEmergencyActive: Boolean(activeRequest) });
+      if (activeRequest) {
+        set({ activeRequest, isEmergencyActive: activeRequest.status !== 'closed' });
+      } else {
+        // If server says no active SOS, keep local state unless explicitly ended
+      }
     } catch (error) {
       console.warn('Failed to refresh SOS status:', error);
     }
   },
 
   endEmergency: async () => {
+    if (pollingTimer) {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    }
     const activeRequest = get().activeRequest;
     if (activeRequest?.id) {
       await api.resolveEmergencyRequest(activeRequest.id);

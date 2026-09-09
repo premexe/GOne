@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking } from 'react-native';
-import { Siren, Phone, Navigation, AlertTriangle, ShieldCheck, XCircle } from 'lucide-react-native';
+import { Siren, Phone, Navigation, AlertTriangle, ShieldCheck, XCircle, Truck, UserCheck } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, SPACING } from '../../src/constants/theme';
 import { TimelineStepper, StepItem } from '../../src/components/TimelineStepper';
@@ -11,31 +11,42 @@ export default function EmergencyModeScreen() {
   const { activeRequest, endEmergency } = useEmergencyStore();
   const profile = useProfileStore((s) => s.profile);
 
-  const status = activeRequest?.status || 'connected';
-  const hospital = activeRequest?.matchedHospital;
-  const eta = activeRequest?.responderEtaMinutes || 6;
+  const hospital = activeRequest?.acceptedHospital || activeRequest?.matchedHospital;
+  const ambulance = activeRequest?.assignedAmbulance;
+  const doctor = activeRequest?.assignedDoctor;
+  const eta = activeRequest?.responderEtaMinutes || 5;
+
+  const isAccepted = Boolean(activeRequest?.acceptedHospital || activeRequest?.hospitalId);
+  const isAmbulanceAssigned = Boolean(ambulance);
+  const isEnRoute = activeRequest?.status === 'en_route' || activeRequest?.dispatchStatus === 'EN_ROUTE' || activeRequest?.dispatchStatus === 'AMBULANCE_ASSIGNED';
 
   const steps: StepItem[] = [
     {
       id: 's1',
       title: 'Locating Emergency Position',
-      subtitle: 'GPS coordinates broadcasted to dispatch system',
-      time: '17:35:10',
+      subtitle: 'GPS coordinates broadcasted to hospital dispatch network',
+      time: 'Live',
       status: 'complete',
     },
     {
       id: 's2',
-      title: 'AI Hospital Matching',
-      subtitle: 'Evaluating bed availability, specialties & distance',
-      time: '17:35:12',
-      status: status === 'locating' ? 'active' : 'complete',
+      title: 'Hospital ER Desk Alerted',
+      subtitle: isAccepted
+        ? `${hospital?.name || 'Hospital'} accepted your emergency admission!`
+        : 'Alerting on-duty emergency desks at nearby partner hospitals...',
+      time: 'Live',
+      status: isAccepted ? 'complete' : 'active',
     },
     {
       id: 's3',
-      title: 'Hospital & ER Desk Connected',
-      subtitle: hospital ? `${hospital.name} accepted payload` : 'Connecting to ER desk...',
-      time: '17:35:15',
-      status: status === 'matching' ? 'active' : status === 'locating' ? 'pending' : 'complete',
+      title: 'Ambulance & Paramedic Dispatch',
+      subtitle: ambulance
+        ? `${ambulance.vehicleNumber} dispatched · Driver: ${ambulance.driverName}`
+        : isAccepted
+        ? 'Hospital assigning ready ambulance from fleet...'
+        : 'Awaiting hospital assignment...',
+      time: 'Live',
+      status: isAmbulanceAssigned ? (isEnRoute ? 'active' : 'complete') : isAccepted ? 'active' : 'pending',
     },
   ];
 
@@ -44,12 +55,16 @@ export default function EmergencyModeScreen() {
     Linking.openURL(`tel:${icePhone}`);
   };
 
+  const handleCallAmbulance = () => {
+    const ambPhone = ambulance?.driverPhone || hospital?.contact || '+1 800-555-0199';
+    Linking.openURL(`tel:${ambPhone}`);
+  };
+
   const handleEndEmergency = async () => {
     try {
       await endEmergency();
       router.replace('/(tabs)');
     } catch (error) {
-      // Keep the active SOS visible if the server could not resolve it.
       console.warn('Failed to resolve SOS:', error);
     }
   };
@@ -72,8 +87,12 @@ export default function EmergencyModeScreen() {
         {/* Monospace ETA Counter Block */}
         <View style={styles.monoReadoutBlock}>
           <Text style={styles.monoTitle}>ESTIMATED RESPONDER ETA</Text>
-          <Text style={styles.monoTimeValue}>0{eta}:42</Text>
-          <Text style={styles.monoSubtext}>CRITICAL TRIAGE PRIORITY HIGH</Text>
+          <Text style={styles.monoTimeValue}>0{eta}:30</Text>
+          <Text style={styles.monoSubtext}>
+            {isAccepted
+              ? `ADMISSION CONFIRMED BY ${hospital?.name?.toUpperCase() || 'HOSPITAL'}`
+              : 'BROADCASTING EMERGENCY TO ACTIVE HOSPITALS'}
+          </Text>
         </View>
 
         {/* Realtime Stepper Sequence */}
@@ -81,22 +100,44 @@ export default function EmergencyModeScreen() {
           <TimelineStepper steps={steps} isDark={true} />
         </View>
 
-        {/* Matched Hospital Summary Card */}
+        {/* Matched / Accepted Hospital Summary Card */}
         {hospital && (
-          <View style={styles.matchedHospitalCard}>
+          <View style={[styles.matchedHospitalCard, isAccepted && styles.acceptedCardBorder]}>
             <View style={styles.hospHeader}>
               <ShieldCheck size={20} color={COLORS.emergency.pulseGreen} />
-              <Text style={styles.hospTag}>CONFIRMED HOSPITAL MATCH</Text>
+              <Text style={styles.hospTag}>
+                {isAccepted ? 'CONFIRMED ADMISSION ACCEPTED' : 'NEARBY PARTNER HOSPITAL'}
+              </Text>
             </View>
 
             <Text style={styles.hospName}>{hospital.name}</Text>
             <Text style={styles.hospDetails}>
-              {hospital.address} · {hospital.distanceKm} km away
+              {hospital.address} · {hospital.distanceKm ?? 2.4} km away
             </Text>
 
-            {hospital.recommendationReason && (
-              <View style={styles.reasonBox}>
-                <Text style={styles.reasonText}>{hospital.recommendationReason}</Text>
+            {/* Ambulance Dispatch Information Box */}
+            {ambulance && (
+              <View style={styles.dispatchBox}>
+                <View style={styles.dispatchHeader}>
+                  <Truck size={18} color={COLORS.brand} />
+                  <Text style={styles.dispatchTitle}>ASSIGNED RESPONDER VEHICLE</Text>
+                </View>
+                <Text style={styles.dispatchVehicle}>{ambulance.vehicleNumber}</Text>
+                <Text style={styles.dispatchDriver}>
+                  Driver: {ambulance.driverName} · Status: {ambulance.status}
+                </Text>
+              </View>
+            )}
+
+            {/* Assigned Doctor Box */}
+            {doctor && (
+              <View style={styles.doctorBox}>
+                <View style={styles.dispatchHeader}>
+                  <UserCheck size={16} color={COLORS.emergency.pulseGreen} />
+                  <Text style={styles.doctorTitle}>ASSIGNED ADMITTING DOCTOR</Text>
+                </View>
+                <Text style={styles.doctorName}>{doctor.name}</Text>
+                <Text style={styles.doctorSub}>{doctor.specialization}</Text>
               </View>
             )}
 
@@ -110,9 +151,14 @@ export default function EmergencyModeScreen() {
                 <Text style={styles.trackActionText}>Track Responder</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.callIceBtn} onPress={handleCallICE}>
+              <TouchableOpacity
+                style={ambulance ? styles.callAmbulanceBtn : styles.callIceBtn}
+                onPress={ambulance ? handleCallAmbulance : handleCallICE}
+              >
                 <Phone size={18} color="#FFFFFF" />
-                <Text style={styles.callIceText}>Call ICE Contact</Text>
+                <Text style={styles.callIceText}>
+                  {ambulance ? 'Call Driver' : 'Call ICE Contact'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -130,7 +176,7 @@ export default function EmergencyModeScreen() {
           <View style={styles.walletRow}>
             <Text style={styles.walletLabel}>Blood Group:</Text>
             <Text style={[styles.walletVal, { color: COLORS.emergency.pulseRed }]}>
-              O+
+              {profile?.bloodGroup || 'O+'}
             </Text>
           </View>
         </View>
@@ -217,7 +263,8 @@ const styles = StyleSheet.create({
   monoSubtext: {
     fontFamily: 'Courier',
     fontSize: 11,
-    color: 'rgba(245, 247, 250, 0.5)',
+    color: 'rgba(245, 247, 250, 0.7)',
+    textAlign: 'center',
   },
   stepperContainer: {
     backgroundColor: COLORS.emergency.cardBg,
@@ -234,6 +281,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderWidth: 1,
     borderColor: 'rgba(59, 219, 122, 0.3)',
+  },
+  acceptedCardBorder: {
+    borderColor: COLORS.emergency.pulseGreen,
+    backgroundColor: 'rgba(16, 36, 26, 0.95)',
   },
   hospHeader: {
     flexDirection: 'row',
@@ -258,15 +309,58 @@ const styles = StyleSheet.create({
     color: 'rgba(245, 247, 250, 0.6)',
     marginBottom: 12,
   },
-  reasonBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  dispatchBox: {
+    backgroundColor: 'rgba(37, 99, 235, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.4)',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  dispatchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  dispatchTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#93C5FD',
+    letterSpacing: 0.5,
+  },
+  dispatchVehicle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  dispatchDriver: {
+    fontSize: 12,
+    color: 'rgba(245, 247, 250, 0.8)',
+    marginTop: 2,
+  },
+  doctorBox: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
     padding: 10,
     borderRadius: 12,
     marginBottom: 16,
   },
-  reasonText: {
-    fontSize: 12,
-    color: COLORS.emergency.text,
+  doctorTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.emergency.pulseGreen,
+    letterSpacing: 0.5,
+  },
+  doctorName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  doctorSub: {
+    fontSize: 11,
+    color: 'rgba(245, 247, 250, 0.7)',
   },
   actionGrid: {
     flexDirection: 'row',
@@ -286,6 +380,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  callAmbulanceBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(59, 219, 122, 0.25)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: COLORS.emergency.pulseGreen,
   },
   callIceBtn: {
     flex: 1,

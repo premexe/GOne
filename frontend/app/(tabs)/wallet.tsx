@@ -18,6 +18,7 @@ export default function WalletScreen() {
   const defaultUser = user || {
     id: 'u101',
     name: 'Alex Johnson',
+    email: 'alex.johnson@example.com',
     phone: '+1 (555) 234-5678',
     bloodGroup: 'O+',
     dob: '1992-06-15',
@@ -26,6 +27,9 @@ export default function WalletScreen() {
   const defaultProfile = profile || {
     id: 'ep101',
     userId: 'u101',
+    bloodGroup: 'O+',
+    organDonor: true,
+    emergencyNotes: 'Allergic to penicillin',
     allergies: ['Penicillin', 'Peanuts'],
     medications: ['Lisinopril 10mg daily'],
     conditions: ['Mild Asthma'],
