@@ -201,7 +201,39 @@ def get_hospital_resources(hospital_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=HospitalResponse, status_code=status.HTTP_201_CREATED)
 def create_hospital(hospital_data: HospitalCreate, db: Session = Depends(get_db)):
-    new_h = Hospital(**hospital_data.model_dump())
+    """
+    Register a new hospital.
+    - If `email` and `password` are provided, a linked User account is created
+      with the hashed password so credentials are visible in Supabase.
+    - The plain-text password is never stored; only the bcrypt hash is saved.
+    """
+    raw_password = hospital_data.password
+    # Strip password before passing to model (not a DB column)
+    data_dict = hospital_data.model_dump(exclude={"password"})
+
+    # Auto-create a linked user account if email + password supplied
+    if data_dict.get("email") and raw_password:
+        existing_user = db.query(User).filter(User.email == data_dict["email"]).first()
+        if existing_user:
+            # Reuse existing user, update its password hash
+            existing_user.password_hash = hash_password(raw_password)
+            db.flush()
+            data_dict["hospital_user_id"] = existing_user.user_id
+        else:
+            # Generate a unique dummy phone number from email
+            phone_seed = data_dict["email"].split("@")[0].replace(".", "")[:8].ljust(8, "0")
+            dummy_phone = f"91{phone_seed}"
+            new_user = User(
+                full_name=data_dict["name"],
+                email=data_dict["email"],
+                phone_number=dummy_phone,
+                password_hash=hash_password(raw_password),
+            )
+            db.add(new_user)
+            db.flush()
+            data_dict["hospital_user_id"] = new_user.user_id
+
+    new_h = Hospital(**data_dict)
     return HospitalRepository.create(db, new_h)
 
 

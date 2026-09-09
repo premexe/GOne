@@ -17,6 +17,8 @@ class HospitalCreate(BaseModel):
     rating: float = 4.8
     hospital_user_id: Optional[int] = None
     email: Optional[str] = None
+    # Password for hospital admin login – hashed and stored in the users table
+    password: Optional[str] = None
 
 class HospitalUpdate(BaseModel):
     name: Optional[str] = None
