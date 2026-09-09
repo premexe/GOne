@@ -1,10 +1,9 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.models.hospital import Hospital
-from app.models.users import User
 from app.schemas.hospital import (
     HospitalCreate,
     HospitalResponse,
@@ -81,33 +80,20 @@ DEMO_PASSWORD = "Demo@123"
 
 def seed_demo_hospitals(db: Session):
     """
-    Ensure the 4 demo hospitals exist with linked user accounts.
+    Ensure the 4 demo hospitals exist with their admin credentials stored
+    directly in the hospitals table (email + password_hash).
     Safe to call on every startup — skips hospitals that already exist.
     """
     for hdata in DEMO_HOSPITALS:
         email = hdata["email"]
-
-        # Check if this hospital already exists (by email)
         existing = db.query(Hospital).filter(Hospital.email == email).first()
         if existing:
+            # Ensure password_hash is set even for old rows
+            if not existing.password_hash:
+                existing.password_hash = hash_password(DEMO_PASSWORD)
+                db.flush()
             continue
 
-        # Create or find the linked user account
-        user = db.query(User).filter(User.email == email).first()
-        if not user:
-            # Generate a unique dummy phone number
-            phone_suffix = email.split("@")[0].replace(".", "")[:10]
-            dummy_phone = f"99{phone_suffix[:8].ljust(8, '0')}"
-            user = User(
-                full_name=hdata["name"],
-                email=email,
-                phone_number=dummy_phone,
-                password_hash=hash_password(DEMO_PASSWORD),
-            )
-            db.add(user)
-            db.flush()  # Get user_id without full commit
-
-        # Create the hospital record
         hospital = Hospital(
             name=hdata["name"],
             email=email,
@@ -119,25 +105,24 @@ def seed_demo_hospitals(db: Session):
             oxygen_beds=hdata["oxygen_beds"],
             phone_number=hdata["phone_number"],
             rating=hdata["rating"],
-            hospital_user_id=user.user_id,
+            password_hash=hash_password(DEMO_PASSWORD),
         )
         db.add(hospital)
 
     db.commit()
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────────
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=HospitalLoginResponse)
 def hospital_login(login_data: HospitalLogin, db: Session = Depends(get_db)):
     """
-    Hospital admin login.  Accepts the hospital email + password,
-    returns a JWT token and the matched hospital record.
+    Hospital admin login.
+    Credentials (email + password_hash) are stored directly in the
+    hospitals table — completely separate from the app users table.
     """
-    # Ensure demo hospitals exist
     seed_demo_hospitals(db)
 
-    # Find the hospital by email
     hospital = db.query(Hospital).filter(Hospital.email == login_data.email).first()
     if not hospital:
         raise HTTPException(
@@ -145,24 +130,14 @@ def hospital_login(login_data: HospitalLogin, db: Session = Depends(get_db)):
             detail="Invalid hospital email or password.",
         )
 
-    # Find the linked user account
-    user = db.query(User).filter(User.user_id == hospital.hospital_user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Hospital account is not properly configured.",
-        )
-
-    # Verify password
-    if not verify_password(login_data.password, user.password_hash):
+    if not hospital.password_hash or not verify_password(login_data.password, hospital.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid hospital email or password.",
         )
 
-    # Create JWT
     access_token = create_access_token(
-        data={"sub": str(user.user_id), "email": user.email}
+        data={"sub": str(hospital.hospital_id), "email": hospital.email, "role": "hospital"}
     )
 
     return {
@@ -190,8 +165,8 @@ def get_hospital_by_id(hospital_id: int, db: Session = Depends(get_db)):
 @router.get("/{hospital_id}/resources", response_model=HospitalResourcesResponse)
 def get_hospital_resources(hospital_id: int, db: Session = Depends(get_db)):
     """
-    Single endpoint that returns all live resources for a hospital:
-    beds, ambulances, doctors.  Used by both the admin dashboard and user app.
+    Returns all live resources for a hospital: beds, ambulances, doctors.
+    Used by both the admin dashboard and user app.
     """
     hospital = HospitalRepository.get_by_id(db, hospital_id)
     if not hospital:
@@ -203,38 +178,30 @@ def get_hospital_resources(hospital_id: int, db: Session = Depends(get_db)):
 def create_hospital(hospital_data: HospitalCreate, db: Session = Depends(get_db)):
     """
     Register a new hospital.
-    - If `email` and `password` are provided, a linked User account is created
-      with the hashed password so credentials are visible in Supabase.
-    - The plain-text password is never stored; only the bcrypt hash is saved.
+    Email + password are stored directly in the hospitals table.
+    The users table is NOT touched — it is exclusively for app patients.
     """
+    # Check for duplicate email
+    if hospital_data.email:
+        existing = db.query(Hospital).filter(Hospital.email == hospital_data.email).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A hospital with this email already exists."
+            )
+
     raw_password = hospital_data.password
-    # Strip password before passing to model (not a DB column)
     data_dict = hospital_data.model_dump(exclude={"password"})
 
-    # Auto-create a linked user account if email + password supplied
-    if data_dict.get("email") and raw_password:
-        existing_user = db.query(User).filter(User.email == data_dict["email"]).first()
-        if existing_user:
-            # Reuse existing user, update its password hash
-            existing_user.password_hash = hash_password(raw_password)
-            db.flush()
-            data_dict["hospital_user_id"] = existing_user.user_id
-        else:
-            # Generate a unique dummy phone number from email
-            phone_seed = data_dict["email"].split("@")[0].replace(".", "")[:8].ljust(8, "0")
-            dummy_phone = f"91{phone_seed}"
-            new_user = User(
-                full_name=data_dict["name"],
-                email=data_dict["email"],
-                phone_number=dummy_phone,
-                password_hash=hash_password(raw_password),
-            )
-            db.add(new_user)
-            db.flush()
-            data_dict["hospital_user_id"] = new_user.user_id
+    # Hash and store password directly in hospitals table
+    if raw_password:
+        data_dict["password_hash"] = hash_password(raw_password)
 
     new_h = Hospital(**data_dict)
-    return HospitalRepository.create(db, new_h)
+    db.add(new_h)
+    db.commit()
+    db.refresh(new_h)
+    return new_h
 
 
 @router.put("/{hospital_id}", response_model=HospitalResponse)
