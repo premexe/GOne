@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, TIMESTAMP
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from app.database.base import Base
 
 class Hospital(Base):
@@ -13,6 +14,9 @@ class Hospital(Base):
     total_beds = Column(Integer, nullable=False, default=100)
     icu_beds = Column(Integer, nullable=False, default=10)
     oxygen_beds = Column(Integer, nullable=False, default=15)
+    general_occupied = Column(Integer, nullable=False, default=0)
+    icu_occupied = Column(Integer, nullable=False, default=0)
+    emergency_occupied = Column(Integer, nullable=False, default=0)
     phone_number = Column(String(50), nullable=True)
     rating = Column(Float, nullable=False, default=4.8)
 
@@ -22,3 +26,6 @@ class Hospital(Base):
         server_default=func.now(),
         onupdate=func.now()
     )
+
+    doctors = relationship("Doctor", back_populates="hospital", cascade="all, delete-orphan")
+    ambulances = relationship("Ambulance", back_populates="hospital", cascade="all, delete-orphan")

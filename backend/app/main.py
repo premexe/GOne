@@ -15,6 +15,8 @@ from app.routers.notifications import router as notification_router
 from app.routers.emergency_orchestration import router as emergency_orchestration_router
 from app.routers.medical_records import router as medical_records_router
 from app.routers.hospitals import router as hospital_router
+from app.routers.doctors import router as doctors_router
+from app.routers.ambulances import router as ambulances_router
 
 app = FastAPI(title="LifeLink AI API")
 
@@ -37,9 +39,11 @@ app.include_router(notification_router)
 app.include_router(emergency_orchestration_router)
 app.include_router(medical_records_router)
 app.include_router(hospital_router)
+app.include_router(doctors_router)
+app.include_router(ambulances_router)
 
 @app.get("/")
 def root():
     return {
-        "message": "LifeLink AI Backend Running Successfully 🚑"
+        "message": "LifeLink AI Backend Running Successfully"
     }

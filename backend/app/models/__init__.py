@@ -6,3 +6,5 @@ from app.models.notification import Notification
 from app.models.emergency_wallet import EmergencyWallet
 from app.models.medical_record import MedicalRecord
 from app.models.hospital import Hospital
+from app.models.doctor import Doctor
+from app.models.ambulance import Ambulance

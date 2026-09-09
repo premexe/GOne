@@ -10,6 +10,9 @@ class HospitalCreate(BaseModel):
     total_beds: int = 100
     icu_beds: int = 10
     oxygen_beds: int = 15
+    general_occupied: int = 0
+    icu_occupied: int = 0
+    emergency_occupied: int = 0
     phone_number: Optional[str] = "+1 800-555-0199"
     rating: float = 4.8
 
@@ -21,6 +24,9 @@ class HospitalUpdate(BaseModel):
     total_beds: Optional[int] = None
     icu_beds: Optional[int] = None
     oxygen_beds: Optional[int] = None
+    general_occupied: Optional[int] = None
+    icu_occupied: Optional[int] = None
+    emergency_occupied: Optional[int] = None
     phone_number: Optional[str] = None
     rating: Optional[float] = None
 
@@ -33,6 +39,9 @@ class HospitalResponse(BaseModel):
     total_beds: int
     icu_beds: int
     oxygen_beds: int
+    general_occupied: int = 0
+    icu_occupied: int = 0
+    emergency_occupied: int = 0
     phone_number: Optional[str]
     rating: float
     created_at: Optional[datetime] = None
