@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
-    "start": "npx --node-options=\"--max-old-space-size=8192\" expo start",
-    "android": "npx --node-options=\"--max-old-space-size=8192\" expo start --android",
-    "ios": "npx --node-options=\"--max-old-space-size=8192\" expo start --ios",
-    "web": "npx --node-options=\"--max-old-space-size=8192\" expo start --web",
+    "start": "npx --node-options=\"--max-old-space-size=8192\" expo start --offline",
+    "android": "npx --node-options=\"--max-old-space-size=8192\" expo start --android --offline",
+    "ios": "npx --node-options=\"--max-old-space-size=8192\" expo start --ios --offline",
+    "web": "npx --node-options=\"--max-old-space-size=8192\" expo start --web --offline",
     "build": "npx expo export -p web"
   },
   "dependencies": {

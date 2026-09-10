@@ -35,17 +35,20 @@ class EmergencyOrchestrationService:
                 commit=False
             )
 
-            # Step 2: Create Emergency Response
-            response_data = EmergencyResponseCreate(
-                sos_id=sos.sos_id
-            )
+            # Step 2: Get or create Emergency Response
+            from app.repositories.emergency_response_repository import EmergencyResponseRepository
+            from app.models.emergency_response import EmergencyResponse
 
-            response = EmergencyResponseService.create_response(
-                db,
-                user_id,
-                response_data,
-                commit=False
-            )
+            existing_response = EmergencyResponseRepository.get_by_sos(db, sos.sos_id)
+            if existing_response:
+                response = existing_response
+            else:
+                response = EmergencyResponse(
+                    sos_id=sos.sos_id,
+                    user_id=user_id,
+                    status="INITIATED"
+                )
+                EmergencyResponseRepository.create(db, response, commit=False)
 
             # Step 3: Get Emergency Contacts
             contacts = EmergencyContactService.get_contacts(
