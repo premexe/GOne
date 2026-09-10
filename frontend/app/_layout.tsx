@@ -5,15 +5,19 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { useProfileStore } from '../src/store/useProfileStore';
+import { useEmergencyStore } from '../src/store/useEmergencyStore';
 
 export default function RootLayout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const restoreSession = useAuthStore((s) => s.restoreSession);
   const fetchProfileAndReadiness = useProfileStore((s) => s.fetchProfileAndReadiness);
+  const refreshActiveEmergency = useEmergencyStore((s) => s.refreshActiveEmergency);
 
   useEffect(() => {
     restoreSession();
     fetchProfileAndReadiness();
+    // Sync SOS state with backend on app launch — clears stale local state
+    refreshActiveEmergency();
   }, []);
 
   return (

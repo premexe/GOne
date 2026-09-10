@@ -37,20 +37,22 @@ export default function TrackEmergencyScreen() {
     return () => clearInterval(timer);
   }, [refreshActiveEmergency]);
 
-  const isResolved = activeRequest?.status === 'closed';
-  const isAccepted = Boolean(activeRequest?.acceptedHospital || (activeRequest as any)?.hospitalId || activeRequest?.dispatchStatus === 'ACCEPTED' || activeRequest?.dispatchStatus === 'AMBULANCE_ASSIGNED' || activeRequest?.dispatchStatus === 'EN_ROUTE');
-  const isAmbulanceAssigned = Boolean(ambulance);
+  const normDispatch = ((activeRequest as any)?.dispatchStatus || '').toUpperCase();
+  const isResolved = activeRequest?.status === 'closed' || normDispatch === 'COMPLETED';
+  const isArrived = activeRequest?.status === 'arrived' || normDispatch === 'ARRIVED' || normDispatch === 'PATIENT_PICKED_UP';
+  const isAccepted = Boolean(activeRequest?.acceptedHospital || (activeRequest as any)?.hospitalId || normDispatch === 'ACCEPTED' || normDispatch === 'AMBULANCE_ASSIGNED' || normDispatch === 'EN_ROUTE' || isArrived);
+  const isAmbulanceAssigned = Boolean(ambulance || normDispatch === 'AMBULANCE_ASSIGNED' || normDispatch === 'EN_ROUTE' || isArrived);
   const isDoctorAssigned = Boolean(doctor);
 
   // User and Hospital Coordinates
-  const userLat = activeRequest?.userLatitude || 19.076;
-  const userLng = activeRequest?.userLongitude || 72.877;
-  const hospLat = hospital?.lat || 19.082;
-  const hospLng = hospital?.lng || 72.882;
+  const userLat = activeRequest?.userLatitude || 19.697;
+  const userLng = activeRequest?.userLongitude || 72.766;
+  const hospLat = hospital?.lat || 19.699;
+  const hospLng = hospital?.lng || 72.771;
 
-  // Simulated ambulance position between hospital and user
-  const ambLat = (hospLat * 0.4 + userLat * 0.6);
-  const ambLng = (hospLng * 0.4 + userLng * 0.6);
+  // Ambulance position: at user position if arrived, else en route between hospital and user
+  const ambLat = isArrived ? userLat : (hospLat * 0.4 + userLat * 0.6);
+  const ambLng = isArrived ? userLng : (hospLng * 0.4 + userLng * 0.6);
 
   // Generate Leaflet OpenStreetMap HTML
   const leafletHtml = useMemo(() => {
@@ -209,14 +211,16 @@ export default function TrackEmergencyScreen() {
         ? `${ambulance.vehicleNumber} (Driver: ${ambulance.driverName}) en route`
         : 'Hospital dispatching nearest emergency vehicle',
       time: ambulance ? 'Dispatched' : 'Pending',
-      status: isResolved ? 'complete' : isAmbulanceAssigned ? 'active' : 'pending',
+      status: (isResolved || isArrived) ? 'complete' : isAmbulanceAssigned ? 'active' : 'pending',
     },
     {
       id: 't5',
-      title: 'Arrived at Location',
-      subtitle: 'Paramedics on scene for patient care',
-      time: isResolved ? 'Completed' : 'Estimated 4-6 min',
-      status: isResolved ? 'complete' : 'pending',
+      title: normDispatch === 'PATIENT_PICKED_UP' ? 'Patient Picked Up' : 'Arrived at Location',
+      subtitle: isArrived
+        ? 'Paramedics on scene providing immediate critical care'
+        : 'Paramedics navigating to patient coordinates',
+      time: isResolved ? 'Completed' : isArrived ? 'On Scene' : 'Estimated 4-6 min',
+      status: isResolved ? 'complete' : isArrived ? 'active' : 'pending',
     },
   ];
 
@@ -237,7 +241,9 @@ export default function TrackEmergencyScreen() {
   };
 
   const handleEndEmergency = async () => {
-    await endEmergency();
+    try {
+      await endEmergency();
+    } catch (_e) {}
     router.replace('/(tabs)');
   };
 
@@ -252,7 +258,15 @@ export default function TrackEmergencyScreen() {
             <View style={styles.bannerBadge}>
               <View style={[styles.statusDot, isAccepted ? styles.dotGreen : styles.dotAmber]} />
               <Text style={styles.bannerBadgeText}>
-                {isAccepted ? 'HOSPITAL ADMISSION ACCEPTED' : 'BROADCASTING SOS'}
+                {isResolved
+                  ? 'EMERGENCY RESOLVED'
+                  : isArrived
+                  ? 'RESPONDER UNIT ARRIVED ON SCENE'
+                  : isAmbulanceAssigned
+                  ? 'AMBULANCE EN ROUTE'
+                  : isAccepted
+                  ? 'HOSPITAL ADMISSION ACCEPTED'
+                  : 'BROADCASTING SOS'}
               </Text>
             </View>
             <Text style={styles.liveClockText}>LIVE SYNC</Text>

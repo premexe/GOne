@@ -45,8 +45,8 @@ class EmergencyResponseService:
                 detail="You are not allowed to access this SOS."
             )
 
-        # SOS must be active
-        if sos.status != "ACTIVE":
+        # SOS must be active or in progress
+        if sos.status not in ["ACTIVE", "ACCEPTED", "IN_PROGRESS"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="SOS is not active."
@@ -61,10 +61,7 @@ class EmergencyResponseService:
         )
 
         if existing_response:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Emergency response already exists for this SOS."
-            )
+            return existing_response
 
         # Create response
         new_response = EmergencyResponse(

@@ -52,6 +52,30 @@ def get_all_active_sos(
 
 
 @router.get(
+    "/completed",
+    response_model=List[SOSResponse]
+)
+def get_completed_sos(
+    hospital_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """Fetch all resolved/completed SOS requests. Supports filtering by hospital_id."""
+    return SOSService.get_completed_sos(db, hospital_id)
+
+
+@router.get(
+    "/completed/{hospital_id}",
+    response_model=List[SOSResponse]
+)
+def get_completed_sos_for_hospital(
+    hospital_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get all completed SOS requests for a specific hospital."""
+    return SOSService.get_completed_sos(db, hospital_id)
+
+
+@router.get(
     "/hospital/{hospital_id}",
     response_model=List[SOSResponse]
 )

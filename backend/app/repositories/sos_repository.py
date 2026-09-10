@@ -60,6 +60,15 @@ class SOSRepository:
         )
 
     @staticmethod
+    def get_completed(db: Session, hospital_id: Optional[int] = None) -> List[SOS]:
+        query = db.query(SOS).filter(
+            (SOS.status == "RESOLVED") | (SOS.dispatch_status.in_(["COMPLETED", "completed"]))
+        )
+        if hospital_id:
+            query = query.filter(SOS.accepted_hospital_id == hospital_id)
+        return query.order_by(SOS.created_at.desc()).all()
+
+    @staticmethod
     def update(db: Session, sos: SOS) -> SOS:
         db.commit()
         db.refresh(sos)

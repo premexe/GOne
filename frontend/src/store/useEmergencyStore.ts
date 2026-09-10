@@ -43,7 +43,19 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
     const symptoms = symptomsList || get().selectedSymptoms;
     const notesText = userNotes || get().notes;
 
-    const request = await api.createEmergencyRequest(symptoms, 19.076, 72.877, notesText);
+    // Use live GPS if available, fall back to Palghar center
+    let userLat = 19.697;
+    let userLng = 72.766;
+    try {
+      const Location = await import('expo-location');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        userLat = pos.coords.latitude;
+        userLng = pos.coords.longitude;
+      }
+    } catch (_gpsErr) { /* use Palghar center fallback */ }
+    const request = await api.createEmergencyRequest(symptoms, userLat, userLng, notesText);
     set({ activeRequest: request, isLocating: false });
 
     // Start 3-second live polling loop for real-time hospital acceptance & ambulance dispatch
@@ -66,7 +78,9 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
       if (activeRequest) {
         set({ activeRequest, isEmergencyActive: activeRequest.status !== 'closed' });
       } else {
-        // If server says no active SOS, keep local state unless explicitly ended
+        // Server says no active SOS — clear stale local state & stop polling
+        if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
+        set({ isEmergencyActive: false, activeRequest: null, selectedSymptoms: [], notes: '' });
       }
     } catch (error) {
       console.warn('Failed to refresh SOS status:', error);
@@ -79,14 +93,19 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
       pollingTimer = null;
     }
     const activeRequest = get().activeRequest;
-    if (activeRequest?.id) {
-      await api.resolveEmergencyRequest(activeRequest.id);
+    try {
+      if (activeRequest?.id) {
+        await api.resolveEmergencyRequest(activeRequest.id);
+      }
+    } catch (err: any) {
+      console.log('Safe end notice:', err?.message || err);
+    } finally {
+      set({
+        isEmergencyActive: false,
+        activeRequest: null,
+        selectedSymptoms: [],
+        notes: '',
+      });
     }
-    set({
-      isEmergencyActive: false,
-      activeRequest: null,
-      selectedSymptoms: [],
-      notes: '',
-    });
   },
 }));

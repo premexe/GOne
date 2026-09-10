@@ -8,17 +8,30 @@ import { useEmergencyStore } from '../../src/store/useEmergencyStore';
 import { useProfileStore } from '../../src/store/useProfileStore';
 
 export default function EmergencyModeScreen() {
-  const { activeRequest, endEmergency } = useEmergencyStore();
+  const { activeRequest, isEmergencyActive, endEmergency } = useEmergencyStore();
   const profile = useProfileStore((s) => s.profile);
 
+  // Guard: if no active SOS, go back to home
+  if (!isEmergencyActive || !activeRequest) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0D1117', justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: '#FFFFFF', fontSize: 16, marginBottom: 16 }}>No active emergency</Text>
+        <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={{ backgroundColor: '#2563EB', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
+          <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Go Home</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
   const hospital = activeRequest?.acceptedHospital || activeRequest?.matchedHospital;
   const ambulance = activeRequest?.assignedAmbulance;
   const doctor = activeRequest?.assignedDoctor;
   const eta = activeRequest?.responderEtaMinutes || 5;
 
-  const isAccepted = Boolean(activeRequest?.acceptedHospital || activeRequest?.hospitalId);
-  const isAmbulanceAssigned = Boolean(ambulance);
-  const isEnRoute = activeRequest?.status === 'en_route' || activeRequest?.dispatchStatus === 'EN_ROUTE' || activeRequest?.dispatchStatus === 'AMBULANCE_ASSIGNED';
+  const normDispatch = ((activeRequest as any)?.dispatchStatus || '').toUpperCase();
+  const isAccepted = Boolean(activeRequest?.acceptedHospital || activeRequest?.hospitalId || normDispatch === 'ACCEPTED' || normDispatch === 'AMBULANCE_ASSIGNED' || normDispatch === 'EN_ROUTE');
+  const isAmbulanceAssigned = Boolean(ambulance || normDispatch === 'AMBULANCE_ASSIGNED' || normDispatch === 'EN_ROUTE');
+  const isArrived = activeRequest?.status === 'arrived' || normDispatch === 'ARRIVED' || normDispatch === 'PATIENT_PICKED_UP';
+  const isEnRoute = activeRequest?.status === 'en_route' || normDispatch === 'EN_ROUTE' || normDispatch === 'AMBULANCE_ASSIGNED';
 
   const steps: StepItem[] = [
     {
@@ -46,7 +59,16 @@ export default function EmergencyModeScreen() {
         ? 'Hospital assigning ready ambulance from fleet...'
         : 'Awaiting hospital assignment...',
       time: 'Live',
-      status: isAmbulanceAssigned ? (isEnRoute ? 'active' : 'complete') : isAccepted ? 'active' : 'pending',
+      status: isArrived ? 'complete' : isAmbulanceAssigned ? (isEnRoute ? 'active' : 'complete') : isAccepted ? 'active' : 'pending',
+    },
+    {
+      id: 's4',
+      title: normDispatch === 'PATIENT_PICKED_UP' ? 'Patient Picked Up' : 'Arrived at Location',
+      subtitle: isArrived
+        ? 'Paramedics on scene providing emergency care'
+        : 'Ambulance moving to patient location',
+      time: isArrived ? 'On Scene' : 'Pending',
+      status: isArrived ? 'active' : 'pending',
     },
   ];
 
@@ -63,9 +85,10 @@ export default function EmergencyModeScreen() {
   const handleEndEmergency = async () => {
     try {
       await endEmergency();
-      router.replace('/(tabs)');
     } catch (error) {
-      console.warn('Failed to resolve SOS:', error);
+      console.warn('Notice while ending SOS:', error);
+    } finally {
+      router.replace('/(tabs)');
     }
   };
 

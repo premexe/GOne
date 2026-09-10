@@ -164,13 +164,14 @@ function toEmergencyRequest(sos: BackendSOS, cachedMatch?: Hospital): EmergencyR
     };
   }
 
+  const normDispatch = (sos.dispatch_status || '').toUpperCase();
   let appStatus: 'locating' | 'matching' | 'connected' | 'en_route' | 'arrived' | 'closed' = 'connected';
-  if (isResolved) {
+  if (isResolved || normDispatch === 'COMPLETED') {
     appStatus = 'closed';
-  } else if (sos.dispatch_status === 'EN_ROUTE' || sos.dispatch_status === 'AMBULANCE_ASSIGNED') {
-    appStatus = 'en_route';
-  } else if (sos.dispatch_status === 'ARRIVED') {
+  } else if (normDispatch === 'ARRIVED' || normDispatch === 'PATIENT_PICKED_UP') {
     appStatus = 'arrived';
+  } else if (normDispatch === 'EN_ROUTE' || normDispatch === 'AMBULANCE_ASSIGNED') {
+    appStatus = 'en_route';
   } else if (isAccepted) {
     appStatus = 'connected';
   }
@@ -190,15 +191,15 @@ function toEmergencyRequest(sos: BackendSOS, cachedMatch?: Hospital): EmergencyR
     assignedAmbulance: assignedAmb,
     assignedDoctor: assignedDoc,
     responderEtaMinutes: 5,
-    userLatitude: sos.latitude || 19.076,
-    userLongitude: sos.longitude || 72.877,
+    userLatitude: sos.latitude || 19.697,
+    userLongitude: sos.longitude || 72.766,
   };
 }
 
 export const api = {
   // Auth
   async login(email: string, password: string): Promise<User> {
-    const result = await request('/users/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    const result = await request('/users/login', { method: 'POST', body: JSON.stringify({ email: email.trim().toLowerCase(), password: password.trim() }) });
     setToken(result.access_token);
     await AsyncStorage.setItem(AUTH_TOKEN_KEY, result.access_token);
     const backendUser = await request(`/users/${getUserIdFromToken(result.access_token)}`) as BackendUser;
@@ -518,22 +519,46 @@ export const api = {
     };
 
     try {
-      if (getToken()) {
+      let activeToken = getToken();
+      if (!activeToken) {
+        activeToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+        if (activeToken) setToken(activeToken);
+      }
+
+      if (activeToken) {
         const description = [symptoms.length ? `Symptoms: ${symptoms.join(', ')}` : '', notes || '']
           .filter(Boolean)
           .join('\n');
-        const sosResponse = await request('/emergency/trigger', {
-          method: 'POST',
-          body: JSON.stringify({
-            latitude: userLat,
-            longitude: userLng,
-            description,
-          }),
-        });
-        if (sosResponse && sosResponse.sos) {
+
+        let rawSos: any = null;
+        // Fast direct POST /sos/ (connects instantly to hospital triage board)
+        try {
+          rawSos = await request('/sos/', {
+            method: 'POST',
+            body: JSON.stringify({
+              latitude: userLat,
+              longitude: userLng,
+              description,
+              patient_name: currentUser?.name || undefined,
+            }),
+          });
+        } catch (_sosErr) {
+          // Fallback to /emergency/trigger orchestration if needed
+          const trigResp = await request('/emergency/trigger', {
+            method: 'POST',
+            body: JSON.stringify({
+              latitude: userLat,
+              longitude: userLng,
+              description,
+            }),
+          });
+          rawSos = trigResp?.sos || trigResp;
+        }
+
+        if (rawSos) {
           newRequest = {
             ...newRequest,
-            ...toEmergencyRequest(sosResponse.sos),
+            ...toEmergencyRequest(rawSos),
             symptoms,
             urgencyTier: triage.urgencyTier,
             matchedHospital: topMatch,
@@ -542,7 +567,7 @@ export const api = {
         }
       }
     } catch (err) {
-      console.warn('Backend SOS trigger failed, running local SOS flow:', err);
+      console.warn('Backend SOS trigger notice:', err);
     }
 
     currentEmergencyRequests.unshift(newRequest);
@@ -554,12 +579,30 @@ export const api = {
   },
 
   async getActiveEmergencyRequest(): Promise<EmergencyRequest | null> {
-    const sos = await request('/sos/my-active') as BackendSOS | null;
-    return sos ? toEmergencyRequest(sos) : null;
+    try {
+      let activeToken = getToken();
+      if (!activeToken) {
+        activeToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+        if (activeToken) setToken(activeToken);
+      }
+      if (!activeToken) return null;
+
+      const sos = await request('/sos/my-active') as BackendSOS | null;
+      return sos ? toEmergencyRequest(sos) : null;
+    } catch (err: any) {
+      return null;
+    }
   },
 
   async resolveEmergencyRequest(sosId: string): Promise<void> {
-    await request(`/sos/${sosId}/resolve`, { method: 'PUT' });
+    try {
+      await request(`/sos/${sosId}/resolve`, { method: 'PUT' });
+    } catch (err: any) {
+      if (err?.message && err.message.toLowerCase().includes('already resolved')) {
+        return;
+      }
+      console.warn('Resolve request status:', err?.message || err);
+    }
   },
 
   async getNotifications() {

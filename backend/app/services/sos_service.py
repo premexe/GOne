@@ -53,6 +53,10 @@ class SOSService:
         return SOSRepository.get_all_active(db)
 
     @staticmethod
+    def get_completed_sos(db: Session, hospital_id: int = None):
+        return SOSRepository.get_completed(db, hospital_id)
+
+    @staticmethod
     def get_by_id(db: Session, sos_id: int):
         sos = SOSRepository.get_by_id(db, sos_id)
         if not sos:
@@ -85,8 +89,9 @@ class SOSService:
         if not sos:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SOS not found.")
 
-        # Rejection from one hospital keeps it active for other hospitals or marks rejected
+        # Mark as fully rejected so it stops appearing in new emergency queues
         sos.dispatch_status = "REJECTED"
+        sos.status = "REJECTED"
         return SOSRepository.update(db, sos)
 
     @staticmethod
@@ -96,9 +101,20 @@ class SOSService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SOS not found.")
 
         sos.dispatch_status = new_status
-        if new_status == "COMPLETED":
+        if new_status in ["COMPLETED", "completed"]:
             sos.status = "RESOLVED"
             sos.resolved_at = func.now()
+            # Free up assigned ambulance
+            if sos.assigned_ambulance_id:
+                amb = AmbulanceRepository.get_by_id(db, sos.assigned_ambulance_id)
+                if amb:
+                    amb.status = "AVAILABLE"
+            # Free up assigned doctor
+            if sos.assigned_doctor_id:
+                doc = DoctorRepository.get_by_id(db, sos.assigned_doctor_id)
+                if doc and doc.current_cases and doc.current_cases > 0:
+                    doc.current_cases -= 1
+            db.commit()
         else:
             sos.status = "IN_PROGRESS"
 
@@ -150,10 +166,23 @@ class SOSService:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to resolve this SOS.")
 
         if sos.status == "RESOLVED":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SOS already resolved.")
+            return sos
 
         sos.status = "RESOLVED"
         sos.dispatch_status = "COMPLETED"
         sos.resolved_at = func.now()
+
+        # Free up assigned ambulance
+        if sos.assigned_ambulance_id:
+            amb = AmbulanceRepository.get_by_id(db, sos.assigned_ambulance_id)
+            if amb:
+                amb.status = "AVAILABLE"
+
+        # Free up assigned doctor
+        if sos.assigned_doctor_id:
+            doc = DoctorRepository.get_by_id(db, sos.assigned_doctor_id)
+            if doc and doc.current_cases and doc.current_cases > 0:
+                doc.current_cases -= 1
+        db.commit()
 
         return SOSRepository.update(db, sos)

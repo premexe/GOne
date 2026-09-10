@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.models.users import User
 from app.schemas.user import UserCreate, UserUpdate
@@ -19,7 +20,8 @@ class UserRepository:
 
     @staticmethod
     def get_by_email(db: Session, email: str):
-        return db.query(User).filter(User.email == email).first()
+        # Case-insensitive lookup so mobile keyboards' auto-capitalization doesn't break login
+        return db.query(User).filter(func.lower(User.email) == email.strip().lower()).first()
 
     @staticmethod
     def get_all(db: Session):
