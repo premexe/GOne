@@ -28,7 +28,7 @@ PALGHAR_HOSPITALS = [
         "oxygen_beds": 45,
         "phone_number": "+91 2525 252244",
         "rating": 4.8,
-        "password": "Civil@Palghar123",
+        "password": "Demo@123",
         "ambulances": ["MH-48-AM-1001", "MH-48-AM-1002", "MH-48-AM-1003"],
         "doctors": [
             ("Dr. Rajesh Patil", "Emergency Medicine", "+91 9823011221"),
@@ -46,7 +46,7 @@ PALGHAR_HOSPITALS = [
         "oxygen_beds": 30,
         "phone_number": "+91 2525 256932",
         "rating": 4.7,
-        "password": "Dhawale@2026",
+        "password": "Demo@123",
         "ambulances": ["MH-48-AM-2001", "MH-48-AM-2002"],
         "doctors": [
             ("Dr. Anand Kulkarni", "Emergency & Critical Care", "+91 9823022331"),
@@ -64,7 +64,7 @@ PALGHAR_HOSPITALS = [
         "oxygen_beds": 30,
         "phone_number": "+91 2525 661100",
         "rating": 4.9,
-        "password": "Thunga@Boisar123",
+        "password": "Demo@123",
         "ambulances": ["MH-48-AM-3001", "MH-48-AM-3002"],
         "doctors": [
             ("Dr. Vikram Sharma", "Interventional Cardiology", "+91 9823033441"),
@@ -82,7 +82,7 @@ PALGHAR_HOSPITALS = [
         "oxygen_beds": 20,
         "phone_number": "+91 2525 254500",
         "rating": 4.6,
-        "password": "Anand@Palghar123",
+        "password": "Demo@123",
         "ambulances": ["MH-48-AM-4001"],
         "doctors": [
             ("Dr. Sachin Anand", "Critical Care & ICU", "+91 9823044551"),
@@ -99,7 +99,7 @@ PALGHAR_HOSPITALS = [
         "oxygen_beds": 25,
         "phone_number": "+91 2525 272800",
         "rating": 4.7,
-        "password": "Sanjeevani@123",
+        "password": "Demo@123",
         "ambulances": ["MH-48-AM-5001", "MH-48-AM-5002"],
         "doctors": [
             ("Dr. Ramesh Jadhav", "Orthopedics & Trauma", "+91 9823055661"),
@@ -116,7 +116,7 @@ PALGHAR_HOSPITALS = [
         "oxygen_beds": 15,
         "phone_number": "+91 2525 251120",
         "rating": 4.5,
-        "password": "Kanta@Palghar123",
+        "password": "Demo@123",
         "ambulances": ["MH-48-AM-6001"],
         "doctors": [
             ("Dr. Suresh Mehta", "General Physician & Emergency", "+91 9823066771"),
@@ -133,7 +133,7 @@ PALGHAR_HOSPITALS = [
         "oxygen_beds": 16,
         "phone_number": "+91 2525 255400",
         "rating": 4.6,
-        "password": "Philia@Palghar123",
+        "password": "Demo@123",
         "ambulances": ["MH-48-AM-7001"],
         "doctors": [
             ("Dr. David Dsouza", "Emergency Care", "+91 9823077881"),
@@ -150,7 +150,7 @@ PALGHAR_HOSPITALS = [
         "oxygen_beds": 25,
         "phone_number": "+91 2528 222055",
         "rating": 4.6,
-        "password": "Cottage@Dahanu123",
+        "password": "Demo@123",
         "ambulances": ["MH-48-AM-8001", "MH-48-AM-8002"],
         "doctors": [
             ("Dr. Sunil Naik", "Trauma & Emergency", "+91 9823088991"),
@@ -167,7 +167,7 @@ PALGHAR_HOSPITALS = [
         "oxygen_beds": 60,
         "phone_number": "+91 2528 245000",
         "rating": 4.9,
-        "password": "Vedanta@Palghar123",
+        "password": "Demo@123",
         "ambulances": ["MH-48-AM-9001", "MH-48-AM-9002", "MH-48-AM-9003"],
         "doctors": [
             ("Dr. Arvind Menon", "Critical Care & ICU", "+91 9823099001"),
@@ -185,7 +185,7 @@ PALGHAR_HOSPITALS = [
         "oxygen_beds": 20,
         "phone_number": "+91 2525 247100",
         "rating": 4.7,
-        "password": "Manor@Highway123",
+        "password": "Demo@123",
         "ambulances": ["MH-48-AM-0001", "MH-48-AM-0002"],
         "doctors": [
             ("Dr. Pankaj Shah", "Highway Trauma & Emergency", "+91 9823000111"),
