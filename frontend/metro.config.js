@@ -21,6 +21,7 @@ config.transformer.babelTransformerPath = require.resolve('./metro.transformer')
 // the bundle. Keep all worker work in-process and limit parallelism.
 config.transformer.unstable_workerThreads = true;
 config.watcher.unstable_workerThreads = true;
-config.maxWorkers = 1;
+const cpus = require('os').cpus();
+config.maxWorkers = Math.max(2, Math.min(4, cpus ? cpus.length : 2));
 
 module.exports = config;
