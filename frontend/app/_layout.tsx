@@ -35,6 +35,7 @@ export default function RootLayout() {
         >
           <Stack.Screen name="(auth)/login" options={{ animation: 'fade' }} />
           <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
+          <Stack.Screen name="admin/index" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen
             name="sos/emergency"
             options={{

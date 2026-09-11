@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
+import { Alert, View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import { Siren, Mic, CheckCircle2, ArrowRight, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
@@ -9,6 +9,7 @@ import { isSpeechRecognitionAvailable, startSpeechRecognition } from '../../src/
 export default function ProvideInfoScreen() {
   const { selectedSymptoms, toggleSymptom, setNotes, notes, triggerSOS } = useEmergencyStore();
   const [isRecording, setIsRecording] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
 
@@ -26,23 +27,38 @@ export default function ProvideInfoScreen() {
   ];
 
   const handleStartEmergency = async () => {
-    await triggerSOS(selectedSymptoms, notes);
-    router.push('/sos/emergency');
+    if (isSending) return;
+    setIsSending(true);
+    try {
+      await triggerSOS(selectedSymptoms, notes);
+      router.push('/sos/emergency');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to send the SOS.';
+      Alert.alert(
+        'SOS not delivered',
+        `${message}\n\nPlease call your local emergency number immediately while you retry.`,
+      );
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const handleVoiceRecordToggle = () => {
+  const handleVoiceRecordToggle = async () => {
     if (isRecording) {
       recognitionRef.current?.stop();
       return;
     }
 
     if (!isSpeechRecognitionAvailable()) {
-      setVoiceError('Live transcription is unavailable on this device. Use Chrome on web or enter symptom details below.');
+      Alert.alert(
+        'Voice transcription unavailable',
+        'Tap & Speak works after the LifeLink app is installed as a development or production build. You can enter the emergency note manually below.',
+      );
       return;
     }
 
     setVoiceError(null);
-    const recognition = startSpeechRecognition({
+    const recognition = await startSpeechRecognition({
       onTranscript: setNotes,
       onEnd: () => {
         recognitionRef.current = null;
@@ -137,10 +153,11 @@ export default function ProvideInfoScreen() {
       <TouchableOpacity
         activeOpacity={0.88}
         onPress={handleStartEmergency}
-        style={styles.launchButton}
+        disabled={isSending}
+        style={[styles.launchButton, isSending && styles.launchButtonSending]}
       >
         <Siren size={22} color="#FFFFFF" />
-        <Text style={styles.launchButtonText}>ENGAGE EMERGENCY MODE</Text>
+        <Text style={styles.launchButtonText}>{isSending ? 'SENDING SOS TO DISPATCH...' : 'ENGAGE EMERGENCY MODE'}</Text>
         <ArrowRight size={20} color="#FFFFFF" />
       </TouchableOpacity>
     </ScrollView>
@@ -305,6 +322,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 6,
+  },
+  launchButtonSending: {
+    opacity: 0.8,
   },
   launchButtonText: {
     color: '#FFFFFF',

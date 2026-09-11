@@ -36,7 +36,8 @@
           "faceIDPermission": "Allow LifeLink AI+ to use Face ID to unlock your emergency workspace."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-speech-recognition"
     ]
   }
 }

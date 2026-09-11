@@ -111,6 +111,9 @@ export default function LoginScreen() {
         <TouchableOpacity onPress={() => { setIsRegistering(!isRegistering); setError(''); }}>
           <Text style={styles.switchText}>{isRegistering ? 'Already have an account? Sign in' : 'New here? Create an account'}</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push('/admin')}>
+          <Text style={styles.adminLink}>Open Emergency Admin Dashboard</Text>
+        </TouchableOpacity>
       </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -220,6 +223,7 @@ const styles = StyleSheet.create({
   input: { width: '100%', height: 52, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: SPACING.buttonRadius, paddingHorizontal: 16, marginBottom: 10, color: COLORS.ink },
   error: { width: '100%', color: COLORS.status.red, fontSize: 13, marginBottom: 8 },
   switchText: { color: COLORS.brand, fontWeight: '700', fontSize: 13, marginTop: 8 },
+  adminLink: { color: COLORS.muted, fontWeight: '700', fontSize: 12, marginTop: 18, textDecorationLine: 'underline' },
   guestButtonText: {
     fontSize: 14,
     fontWeight: '700',

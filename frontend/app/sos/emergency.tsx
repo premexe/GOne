@@ -24,6 +24,7 @@ export default function EmergencyModeScreen() {
   }
   const hospital = activeRequest?.acceptedHospital || activeRequest?.matchedHospital;
   const ambulance = activeRequest?.assignedAmbulance;
+  const rejectedHospitals = activeRequest?.rejectedHospitals || [];
   const doctor = activeRequest?.assignedDoctor;
   const eta = activeRequest?.responderEtaMinutes || 5;
 
@@ -122,6 +123,17 @@ export default function EmergencyModeScreen() {
         <View style={styles.stepperContainer}>
           <TimelineStepper steps={steps} isDark={true} />
         </View>
+
+        {rejectedHospitals.length > 0 && (
+          <View style={styles.rejectionCard}>
+            <Text style={styles.rejectionTitle}>HOSPITALS UNABLE TO ACCEPT</Text>
+            {rejectedHospitals.map((hospital) => (
+              <Text key={hospital.id} style={styles.rejectionText}>
+                {hospital.name}{hospital.reason ? ` — ${hospital.reason}` : ''}
+              </Text>
+            ))}
+          </View>
+        )}
 
         {/* Matched / Accepted Hospital Summary Card */}
         {hospital && (
@@ -297,6 +309,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.emergency.border,
   },
+  rejectionCard: {
+    backgroundColor: 'rgba(255, 176, 59, 0.12)',
+    borderColor: 'rgba(255, 176, 59, 0.45)',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  rejectionTitle: { color: COLORS.emergency.pulseAmber, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, marginBottom: 7 },
+  rejectionText: { color: COLORS.emergency.text, fontSize: 13, lineHeight: 20 },
   matchedHospitalCard: {
     backgroundColor: COLORS.emergency.cardBg,
     borderRadius: SPACING.cardRadius,

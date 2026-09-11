@@ -1,69 +1,63 @@
-export type SpeechRecognitionState = 'idle' | 'listening' | 'unavailable' | 'error';
-
-type RecognitionEvent = {
-  results: ArrayLike<ArrayLike<{ transcript: string }>>;
-};
-
-type BrowserSpeechRecognition = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  maxAlternatives: number;
-  start: () => void;
+type SpeechRecognitionModule = {
+  isRecognitionAvailable: () => boolean;
+  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+  start: (options: Record<string, unknown>) => void;
   stop: () => void;
   abort: () => void;
-  onresult: ((event: RecognitionEvent) => void) | null;
-  onerror: ((event: { error: string }) => void) | null;
-  onend: (() => void) | null;
+  addListener: (event: string, listener: (event: any) => void) => { remove: () => void };
 };
 
-type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
-
-function getRecognitionConstructor(): BrowserSpeechRecognitionConstructor | null {
-  if (typeof window === 'undefined') return null;
-
-  const browserWindow = window as Window & {
-    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
-    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
-  };
-  return browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition || null;
+// Expo Go does not contain third-party native modules. Loading this lazily
+// keeps every screen usable there, while development/production builds use
+// the installed native recognizer.
+function getSpeechRecognitionModule(): SpeechRecognitionModule | null {
+  try {
+    return require('expo-speech-recognition').ExpoSpeechRecognitionModule as SpeechRecognitionModule;
+  } catch (_error) {
+    return null;
+  }
 }
 
 export function isSpeechRecognitionAvailable(): boolean {
-  return getRecognitionConstructor() !== null;
+  return getSpeechRecognitionModule()?.isRecognitionAvailable() ?? false;
 }
 
-export function startSpeechRecognition(options: {
+export async function startSpeechRecognition(options: {
   language?: string;
   onTranscript: (transcript: string) => void;
   onEnd: () => void;
   onError: (message: string) => void;
-}): BrowserSpeechRecognition | null {
-  const Recognition = getRecognitionConstructor();
-  if (!Recognition) return null;
+}): Promise<{ stop: () => void; abort: () => void } | null> {
+  const speechRecognition = getSpeechRecognitionModule();
+  if (!speechRecognition?.isRecognitionAvailable()) return null;
 
-  const recognition = new Recognition();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = options.language || 'en-IN';
-  recognition.maxAlternatives = 3;
+  const permission = await speechRecognition.requestPermissionsAsync();
+  if (!permission.granted) {
+    options.onError('Microphone permission is required to transcribe a voice note. Allow it in Settings and try again.');
+    return null;
+  }
 
-  recognition.onresult = (event) => {
-    let transcript = '';
-    for (let index = 0; index < event.results.length; index += 1) {
-      transcript += event.results[index][0]?.transcript || '';
-    }
-    options.onTranscript(transcript.trim());
-  };
-  recognition.onerror = ({ error }) => {
-    const message = error === 'not-allowed'
-      ? 'Microphone access was denied. Allow microphone access and try again.'
-      : error === 'no-speech'
-        ? 'No speech was detected. Please try again.'
-        : 'Speech recognition could not transcribe this recording. Please try again or type the details.';
-    options.onError(message);
-  };
-  recognition.onend = options.onEnd;
-  recognition.start();
-  return recognition;
+  const subscriptions = [
+    speechRecognition.addListener('result', (event) => {
+      const transcript = event.results[0]?.transcript?.trim();
+      if (transcript) options.onTranscript(transcript);
+    }),
+    speechRecognition.addListener('error', (event) => {
+      if (event.error !== 'aborted') options.onError(event.message || 'Speech recognition could not transcribe this recording.');
+    }),
+    speechRecognition.addListener('end', () => {
+      subscriptions.forEach((subscription) => subscription.remove());
+      options.onEnd();
+    }),
+  ];
+
+  speechRecognition.start({
+    lang: options.language || 'en-IN',
+    continuous: true,
+    interimResults: true,
+    addsPunctuation: true,
+    contextualStrings: ['chest pain', 'breathing difficulty', 'bleeding', 'accident', 'unconscious'],
+  });
+
+  return { stop: () => speechRecognition.stop(), abort: () => speechRecognition.abort() };
 }

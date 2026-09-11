@@ -9,6 +9,7 @@ from app.schemas.sos import (
     SOSAccept,
     SOSReject,
     SOSStatusUpdate,
+    SOSLocationUpdate,
     SOSAmbulanceAssign,
     SOSDoctorAssign,
 )
@@ -45,10 +46,11 @@ def create_sos(
     response_model=List[SOSResponse]
 )
 def get_all_active_sos(
+    hospital_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     """Fetch all active SOS requests. Used by hospital dashboards."""
-    return SOSService.get_all_active_sos(db)
+    return SOSService.get_all_active_sos(db, hospital_id)
 
 
 @router.get(
@@ -87,7 +89,7 @@ def get_sos_for_hospital(
     from app.models.sos import SOS
     return db.query(SOS).filter(
         SOS.accepted_hospital_id == hospital_id,
-        SOS.status != "RESOLVED"
+        SOS.status.in_(["ACTIVE", "ACCEPTED", "IN_PROGRESS"])
     ).all()
 
 
@@ -102,6 +104,22 @@ def get_my_active_sos(
     return SOSService.get_active_sos(
         db,
         current_user.user_id
+    )
+
+
+@router.patch(
+    "/{sos_id}/location",
+    response_model=SOSResponse,
+)
+def update_sos_location(
+    sos_id: int,
+    payload: SOSLocationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Replace the initial fast SOS position with the phone's precise GPS fix."""
+    return SOSService.update_location(
+        db, current_user.user_id, sos_id, payload.latitude, payload.longitude
     )
 
 

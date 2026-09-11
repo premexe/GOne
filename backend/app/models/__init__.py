@@ -8,3 +8,4 @@ from app.models.medical_record import MedicalRecord
 from app.models.hospital import Hospital
 from app.models.doctor import Doctor
 from app.models.ambulance import Ambulance
+from app.models.sos_rejection import SOSRejection

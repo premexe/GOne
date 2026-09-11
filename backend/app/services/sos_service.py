@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
 from app.models.sos import SOS
+from app.models.sos_rejection import SOSRejection
 from app.models.users import User
 from app.repositories.sos_repository import SOSRepository
 from app.repositories.hospital_repository import HospitalRepository
@@ -12,6 +13,19 @@ from app.schemas.sos import SOSCreate
 
 
 class SOSService:
+
+    @staticmethod
+    def _release_resources(db: Session, sos: SOS) -> None:
+        """Return every resource reserved by an SOS to its available pool."""
+        if sos.assigned_ambulance_id:
+            ambulance = AmbulanceRepository.get_by_id(db, sos.assigned_ambulance_id)
+            if ambulance:
+                ambulance.status = "AVAILABLE"
+
+        if sos.assigned_doctor_id:
+            doctor = DoctorRepository.get_by_id(db, sos.assigned_doctor_id)
+            if doctor and doctor.current_cases and doctor.current_cases > 0:
+                doctor.current_cases -= 1
 
     @staticmethod
     def create_sos(
@@ -49,8 +63,8 @@ class SOSService:
         )
 
     @staticmethod
-    def get_all_active_sos(db: Session):
-        return SOSRepository.get_all_active(db)
+    def get_all_active_sos(db: Session, hospital_id: int = None):
+        return SOSRepository.get_all_active(db, hospital_id)
 
     @staticmethod
     def get_completed_sos(db: Session, hospital_id: int = None):
@@ -68,6 +82,20 @@ class SOSService:
         return SOSRepository.get_active_by_user(db, user_id)
 
     @staticmethod
+    def update_location(db: Session, user_id: int, sos_id: int, latitude: float, longitude: float):
+        sos = SOSRepository.get_by_id(db, sos_id)
+        if not sos:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SOS not found.")
+        if sos.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to update this SOS location.")
+        if sos.status not in ["ACTIVE", "ACCEPTED", "IN_PROGRESS"]:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This SOS is no longer active.")
+
+        sos.latitude = latitude
+        sos.longitude = longitude
+        return SOSRepository.update(db, sos)
+
+    @staticmethod
     def accept_sos(db: Session, sos_id: int, hospital_id: int):
         sos = SOSRepository.get_by_id(db, sos_id)
         if not sos:
@@ -76,6 +104,11 @@ class SOSService:
         hospital = HospitalRepository.get_by_id(db, hospital_id)
         if not hospital:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hospital not found.")
+
+        if sos.status in ["RESOLVED", "REJECTED"]:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This SOS is no longer active.")
+        if sos.accepted_hospital_id and sos.accepted_hospital_id != hospital_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This SOS has already been accepted by another hospital.")
 
         sos.status = "ACCEPTED"
         sos.dispatch_status = "ACCEPTED"
@@ -89,9 +122,22 @@ class SOSService:
         if not sos:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SOS not found.")
 
-        # Mark as fully rejected so it stops appearing in new emergency queues
-        sos.dispatch_status = "REJECTED"
-        sos.status = "REJECTED"
+        hospital = HospitalRepository.get_by_id(db, hospital_id)
+        if not hospital:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hospital not found.")
+        if sos.status not in ["ACTIVE", "ACCEPTED", "IN_PROGRESS"]:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This SOS is no longer active.")
+
+        existing = db.query(SOSRejection).filter(
+            SOSRejection.sos_id == sos_id,
+            SOSRejection.hospital_id == hospital_id,
+        ).first()
+        if not existing:
+            db.add(SOSRejection(sos_id=sos_id, hospital_id=hospital_id, reason=reason or None))
+            db.commit()
+            db.refresh(sos)
+
+        # Keep the SOS active so another hospital can still accept it.
         return SOSRepository.update(db, sos)
 
     @staticmethod
@@ -100,20 +146,20 @@ class SOSService:
         if not sos:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SOS not found.")
 
-        sos.dispatch_status = new_status
-        if new_status in ["COMPLETED", "completed"]:
+        normalized_status = new_status.strip().upper()
+        if not normalized_status:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A dispatch status is required.")
+
+        if sos.status in ["RESOLVED", "REJECTED"] and normalized_status != "COMPLETED":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This SOS is no longer active.")
+
+        sos.dispatch_status = normalized_status
+        if normalized_status == "COMPLETED":
+            was_completed = sos.status == "RESOLVED"
             sos.status = "RESOLVED"
             sos.resolved_at = func.now()
-            # Free up assigned ambulance
-            if sos.assigned_ambulance_id:
-                amb = AmbulanceRepository.get_by_id(db, sos.assigned_ambulance_id)
-                if amb:
-                    amb.status = "AVAILABLE"
-            # Free up assigned doctor
-            if sos.assigned_doctor_id:
-                doc = DoctorRepository.get_by_id(db, sos.assigned_doctor_id)
-                if doc and doc.current_cases and doc.current_cases > 0:
-                    doc.current_cases -= 1
+            if not was_completed:
+                SOSService._release_resources(db, sos)
             db.commit()
         else:
             sos.status = "IN_PROGRESS"
@@ -129,6 +175,14 @@ class SOSService:
         ambulance = AmbulanceRepository.get_by_id(db, ambulance_id)
         if not ambulance:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ambulance not found.")
+        if sos.status not in ["ACCEPTED", "IN_PROGRESS"] or not sos.accepted_hospital_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A hospital must accept the SOS before assigning an ambulance.")
+        if ambulance.hospital_id != sos.accepted_hospital_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only ambulances from the accepting hospital can be assigned.")
+        if sos.assigned_ambulance_id and sos.assigned_ambulance_id != ambulance_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This SOS already has an ambulance assigned.")
+        if ambulance.status.upper() != "AVAILABLE" and sos.assigned_ambulance_id != ambulance_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This ambulance is currently engaged.")
 
         sos.assigned_ambulance_id = ambulance_id
         sos.dispatch_status = "AMBULANCE_ASSIGNED"
@@ -172,17 +226,7 @@ class SOSService:
         sos.dispatch_status = "COMPLETED"
         sos.resolved_at = func.now()
 
-        # Free up assigned ambulance
-        if sos.assigned_ambulance_id:
-            amb = AmbulanceRepository.get_by_id(db, sos.assigned_ambulance_id)
-            if amb:
-                amb.status = "AVAILABLE"
-
-        # Free up assigned doctor
-        if sos.assigned_doctor_id:
-            doc = DoctorRepository.get_by_id(db, sos.assigned_doctor_id)
-            if doc and doc.current_cases and doc.current_cases > 0:
-                doc.current_cases -= 1
+        SOSService._release_resources(db, sos)
         db.commit()
 
         return SOSRepository.update(db, sos)

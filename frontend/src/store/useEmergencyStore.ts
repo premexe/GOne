@@ -43,20 +43,59 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
     const symptoms = symptomsList || get().selectedSymptoms;
     const notesText = userNotes || get().notes;
 
-    // Use live GPS if available, fall back to Palghar center
+    // Dispatch immediately. A fresh GPS scan can take many seconds and must
+    // never delay notifying the hospital. Use a recent position when present.
     let userLat = 19.697;
     let userLng = 72.766;
     try {
       const Location = await import('expo-location');
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.getForegroundPermissionsAsync();
       if (status === 'granted') {
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        userLat = pos.coords.latitude;
-        userLng = pos.coords.longitude;
+        const lastKnown = await Promise.race([
+          Location.getLastKnownPositionAsync({ maxAge: 120000, requiredAccuracy: 1000 }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 750)),
+        ]);
+        if (lastKnown) {
+          userLat = lastKnown.coords.latitude;
+          userLng = lastKnown.coords.longitude;
+        }
       }
     } catch (_gpsErr) { /* use Palghar center fallback */ }
-    const request = await api.createEmergencyRequest(symptoms, userLat, userLng, notesText);
+    let request: EmergencyRequest;
+    try {
+      request = await api.createEmergencyRequest(symptoms, userLat, userLng, notesText);
+    } catch (error) {
+      set({ isEmergencyActive: false, isLocating: false, activeRequest: null });
+      throw error;
+    }
     set({ activeRequest: request, isLocating: false });
+
+    // Obtain an exact current fix after dispatch. This keeps the SOS fast while
+    // replacing any cached/fallback coordinates on the admin triage screen.
+    void (async () => {
+      try {
+        const Location = await import('expo-location');
+        let { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          ({ status } = await Location.requestForegroundPermissionsAsync());
+        }
+        if (status !== 'granted') return;
+
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        const updated = await api.updateEmergencyLocation(
+          request.id,
+          position.coords.latitude,
+          position.coords.longitude,
+        );
+        if (get().activeRequest?.id === request.id) {
+          set({ activeRequest: updated });
+        }
+      } catch (locationError) {
+        console.warn('Could not update SOS with precise location:', locationError);
+      }
+    })();
 
     // Start 3-second live polling loop for real-time hospital acceptance & ambulance dispatch
     if (pollingTimer) clearInterval(pollingTimer);

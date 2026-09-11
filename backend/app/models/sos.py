@@ -68,3 +68,4 @@ class SOS(Base):
     hospital = relationship("Hospital", foreign_keys=[accepted_hospital_id])
     ambulance = relationship("Ambulance", foreign_keys=[assigned_ambulance_id])
     doctor = relationship("Doctor", foreign_keys=[assigned_doctor_id])
+    rejections = relationship("SOSRejection", back_populates="sos", cascade="all, delete-orphan")

@@ -1,5 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from app.models.sos import SOS
 
 class SOSRepository:
@@ -39,13 +40,19 @@ class SOSRepository:
         )
 
     @staticmethod
-    def get_all_active(db: Session) -> List[SOS]:
-        return (
+    def get_all_active(db: Session, hospital_id: Optional[int] = None) -> List[SOS]:
+        query = (
             db.query(SOS)
-            .filter(SOS.status != "RESOLVED")
+            # Rejected requests must not remain in the live triage queue.
+            .filter(SOS.status.in_(["ACTIVE", "ACCEPTED", "IN_PROGRESS"]))
             .order_by(SOS.created_at.desc())
-            .all()
         )
+        if hospital_id:
+            # Broadcast only unclaimed SOS requests. Once accepted, it belongs
+            # to that hospital's dispatch queue and disappears for all others.
+            query = query.filter(or_(SOS.status == "ACTIVE", SOS.accepted_hospital_id == hospital_id))
+            query = query.filter(~SOS.rejections.any(hospital_id=hospital_id))
+        return query.all()
 
     @staticmethod
     def get_by_hospital(db: Session, hospital_id: int) -> List[SOS]:
@@ -53,7 +60,7 @@ class SOSRepository:
             db.query(SOS)
             .filter(
                 SOS.accepted_hospital_id == hospital_id,
-                SOS.status != "RESOLVED"
+                SOS.status.in_(["ACTIVE", "ACCEPTED", "IN_PROGRESS"])
             )
             .order_by(SOS.created_at.desc())
             .all()

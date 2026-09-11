@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Home, MapPin, Wallet, User } from 'lucide-react-native';
 import { router, usePathname } from 'expo-router';
 import { COLORS, SPACING } from '../constants/theme';
@@ -17,9 +17,13 @@ export const BottomNav: React.FC = () => {
     { key: 'profile', route: '/(tabs)/profile', icon: User },
   ];
 
-  const handleSOSConfirm = () => {
-    triggerSOS();
-    router.push('/sos/emergency');
+  const handleSOSConfirm = async () => {
+    try {
+      await triggerSOS();
+      router.push('/sos/emergency');
+    } catch (error) {
+      Alert.alert('SOS not delivered', error instanceof Error ? error.message : 'Please sign in again and retry.');
+    }
   };
 
   const handleSOSQuickTap = () => {

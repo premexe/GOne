@@ -110,6 +110,23 @@ type BackendSOS = {
     department?: string;
     phone?: string;
   } | null;
+  rejections?: Array<{
+    hospital_id: number;
+    hospital_name: string;
+    reason?: string | null;
+  }>;
+};
+
+export type AdminSOSAlert = {
+  id: string;
+  patientName: string;
+  patientPhone?: string;
+  description?: string;
+  latitude?: number;
+  longitude?: number;
+  status: string;
+  dispatchStatus?: string;
+  createdAt: string;
 };
 
 function toEmergencyRequest(sos: BackendSOS, cachedMatch?: Hospital): EmergencyRequest {
@@ -193,6 +210,11 @@ function toEmergencyRequest(sos: BackendSOS, cachedMatch?: Hospital): EmergencyR
     responderEtaMinutes: 5,
     userLatitude: sos.latitude || 19.697,
     userLongitude: sos.longitude || 72.766,
+    rejectedHospitals: (sos.rejections || []).map((rejection) => ({
+      id: String(rejection.hospital_id),
+      name: rejection.hospital_name,
+      reason: rejection.reason || undefined,
+    })),
   };
 }
 
@@ -489,6 +511,36 @@ export const api = {
   },
 
   // Emergency Requests (SOS)
+  async getAdminSOSAlerts(hospitalId?: string): Promise<AdminSOSAlert[]> {
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : '';
+    const alerts = await request(`/sos/${query}`) as BackendSOS[];
+    return alerts.map((sos) => ({
+      id: String(sos.sos_id),
+      patientName: sos.patient_name || `Patient #${sos.user_id}`,
+      patientPhone: sos.patient_phone || undefined,
+      description: sos.description || undefined,
+      latitude: sos.latitude ?? undefined,
+      longitude: sos.longitude ?? undefined,
+      status: sos.status,
+      dispatchStatus: sos.dispatch_status || undefined,
+      createdAt: sos.created_at,
+    }));
+  },
+
+  async acceptSOSAlert(sosId: string, hospitalId: string): Promise<void> {
+    await request(`/sos/${sosId}/accept`, {
+      method: 'POST',
+      body: JSON.stringify({ hospital_id: Number(hospitalId) }),
+    });
+  },
+
+  async rejectSOSAlert(sosId: string, hospitalId: string, reason = 'Unable to accept at this time'): Promise<void> {
+    await request(`/sos/${sosId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ hospital_id: Number(hospitalId), reason }),
+    });
+  },
+
   async createEmergencyRequest(
     symptoms: string[] = [],
     userLat: number = 19.700,
@@ -525,8 +577,15 @@ export const api = {
         if (activeToken) setToken(activeToken);
       }
 
+      if (!activeToken) {
+        throw new Error('Your session has expired. Please sign in again before sending an SOS.');
+      }
+
       if (activeToken) {
-        const description = [symptoms.length ? `Symptoms: ${symptoms.join(', ')}` : '', notes || '']
+        const description = [
+          symptoms.length ? `Symptoms: ${symptoms.join(', ')}` : '',
+          notes?.trim() ? `Patient note: ${notes.trim()}` : '',
+        ]
           .filter(Boolean)
           .join('\n');
 
@@ -567,7 +626,16 @@ export const api = {
         }
       }
     } catch (err) {
-      console.warn('Backend SOS trigger notice:', err);
+      // Never present a device-only SOS as a live emergency. It would not be
+      // visible to dispatch, which is unsafe and misleading to the patient.
+      console.warn('Backend SOS trigger failed:', err);
+      const message = err instanceof Error ? err.message : 'Unable to send SOS.';
+      if (/invalid or expired token|invalid token|expired/i.test(message)) {
+        setToken(null);
+        await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+        throw new Error('Your session expired. Please sign in again, then send the SOS.');
+      }
+      throw err;
     }
 
     currentEmergencyRequests.unshift(newRequest);
@@ -576,6 +644,14 @@ export const api = {
 
   async getEmergencyRequest(id: string): Promise<EmergencyRequest | undefined> {
     return currentEmergencyRequests.find((r) => r.id === id);
+  },
+
+  async updateEmergencyLocation(sosId: string, latitude: number, longitude: number): Promise<EmergencyRequest> {
+    const sos = await request(`/sos/${sosId}/location`, {
+      method: 'PATCH',
+      body: JSON.stringify({ latitude, longitude }),
+    }) as BackendSOS;
+    return toEmergencyRequest(sos);
   },
 
   async getActiveEmergencyRequest(): Promise<EmergencyRequest | null> {

@@ -30,11 +30,23 @@ class SOSReject(BaseModel):
 class SOSStatusUpdate(BaseModel):
     status: str
 
+class SOSLocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
+
 class SOSAmbulanceAssign(BaseModel):
     ambulance_id: int
 
 class SOSDoctorAssign(BaseModel):
     doctor_id: int
+
+class SOSRejectionResponse(BaseModel):
+    hospital_id: int
+    hospital_name: str
+    reason: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ==========================
@@ -59,5 +71,6 @@ class SOSResponse(BaseModel):
     hospital: Optional[HospitalResponse] = None
     ambulance: Optional[AmbulanceResponse] = None
     doctor: Optional[DoctorResponse] = None
+    rejections: list[SOSRejectionResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

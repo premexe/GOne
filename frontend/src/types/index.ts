@@ -103,6 +103,7 @@ export interface EmergencyRequest {
   responderEtaMinutes?: number;
   userLatitude?: number;
   userLongitude?: number;
+  rejectedHospitals?: Array<{ id: string; name: string; reason?: string }>;
 }
 
 export interface ReadinessScore {
