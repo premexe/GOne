@@ -12,7 +12,7 @@ interface ProfileState {
 
   fetchProfileAndReadiness: () => Promise<void>;
   updateProfile: (partial: Partial<EmergencyProfile>) => Promise<void>;
-  addEmergencyContact: (name: string, relation: string, phone: string) => Promise<void>;
+  addEmergencyContact: (name: string, relation: string, phone: string, email?: string) => Promise<void>;
   removeEmergencyContact: (id: string) => Promise<void>;
   loadCachedWallet: () => Promise<EmergencyProfile | null>;
 }
@@ -47,10 +47,10 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     set({ profile: updated, readinessScore: updatedReadiness });
   },
 
-  addEmergencyContact: async (name, relation, phone) => {
+  addEmergencyContact: async (name, relation, phone, email?) => {
     const current = get().profile;
     if (!current) return;
-    const newContact = await api.createEmergencyContact(name, relation, phone);
+    const newContact = await api.createEmergencyContact(name, relation, phone, email);
     const updatedContacts = [...current.emergencyContacts, newContact];
     const updated = { ...current, emergencyContacts: updatedContacts };
     await AsyncStorage.setItem(WALLET_CACHE_KEY, JSON.stringify(updated));

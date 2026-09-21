@@ -37,7 +37,9 @@
         }
       ],
       "expo-secure-store",
-      "expo-speech-recognition"
+      "expo-speech-recognition",
+      "expo-asset",
+      "expo-status-bar"
     ]
   }
 }

@@ -39,6 +39,7 @@ class EmergencyContactService:
             user_id=user_id,
             name=contact_data.name,
             phone_number=contact_data.phone_number,
+            email=contact_data.email,
             relationship=contact_data.relationship,
             is_primary=contact_data.is_primary
         )
@@ -92,6 +93,9 @@ class EmergencyContactService:
 
         if contact_data.phone_number is not None:
             contact.phone_number = contact_data.phone_number
+
+        if contact_data.email is not None:
+            contact.email = contact_data.email
 
         if contact_data.relationship is not None:
             contact.relationship = contact_data.relationship

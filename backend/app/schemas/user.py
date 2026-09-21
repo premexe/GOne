@@ -16,7 +16,8 @@ class UserCreate(BaseModel):
     date_of_birth: Optional[date] = None
     gender: Optional[str] = None
     blood_group: Optional[str] = None
-    profile_photo: Optional[str] = None
+    profile_photo: Optional[str]
+    plain_password: Optional[str] = None
 
 # ==========================
 # Login User

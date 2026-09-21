@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any, Dict
 from pydantic import BaseModel, ConfigDict
 from app.schemas.hospital import HospitalResponse
 from app.schemas.ambulance import AmbulanceResponse
@@ -68,9 +68,25 @@ class SOSResponse(BaseModel):
     created_at: datetime
     resolved_at: Optional[datetime] = None
 
+    # ── G-ONE AI Triage Fields ────────────────────────────────────────────────
+    ai_emergency_understanding: Optional[str] = None
+    ai_severity: Optional[str] = None
+    ai_required_capabilities: Optional[str] = None
+    ai_health_summary: Optional[str] = None
+    ai_emergency_report: Optional[str] = None
+
+    # ── Real-Time Voice Call & Email Delivery ────────────────────────────────
+    call_sid: Optional[str] = None
+    call_status: Optional[str] = None
+    call_transcript: Optional[str] = None
+    call_summary: Optional[str] = None
+    email_sent: Optional[int] = 0
+    email_sent_at: Optional[datetime] = None
+
     hospital: Optional[HospitalResponse] = None
     ambulance: Optional[AmbulanceResponse] = None
     doctor: Optional[DoctorResponse] = None
     rejections: list[SOSRejectionResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+

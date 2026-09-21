@@ -34,10 +34,11 @@ class SOSService:
         sos_data: SOSCreate,
         commit: bool = True
     ):
-        # Check if user already has an active SOS
+        # If user already has an active SOS, resolve it so this fresh SOS triggers cleanly
         active_sos = SOSRepository.get_active_by_user(db, user_id)
         if active_sos:
-            return active_sos
+            active_sos.status = "RESOLVED"
+            db.commit()
 
         # Fetch user info for quick patient display
         user = db.query(User).filter(User.user_id == user_id).first()
@@ -56,11 +57,36 @@ class SOSService:
             dispatch_status="RECEIVED"
         )
 
-        return SOSRepository.create(
+        created_sos = SOSRepository.create(
             db,
             new_sos,
             commit=commit
         )
+
+        if commit and p_phone:
+            try:
+                import threading
+                from app.services.voice_service import VoiceService
+                from app.database.session import SessionLocal
+
+                def _call():
+                    thread_db = SessionLocal()
+                    try:
+                        VoiceService.initiate_call(thread_db, created_sos.sos_id, p_phone)
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            "Voice call trigger error | sos=%s err=%s", created_sos.sos_id, e
+                        )
+                    finally:
+                        thread_db.close()
+
+                threading.Thread(target=_call, daemon=True).start()
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning("Failed to start voice call thread: %s", exc)
+
+        return created_sos
 
     @staticmethod
     def get_all_active_sos(db: Session, hospital_id: int = None):

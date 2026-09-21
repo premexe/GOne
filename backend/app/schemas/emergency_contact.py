@@ -10,6 +10,7 @@ from pydantic import BaseModel
 class EmergencyContactCreate(BaseModel):
     name: str
     phone_number: str
+    email: Optional[str] = None
     relationship: Optional[str] = None
     is_primary: bool = False
 
@@ -20,6 +21,7 @@ class EmergencyContactCreate(BaseModel):
 class EmergencyContactUpdate(BaseModel):
     name: Optional[str] = None
     phone_number: Optional[str] = None
+    email: Optional[str] = None
     relationship: Optional[str] = None
     is_primary: Optional[bool] = None
 
@@ -32,6 +34,7 @@ class EmergencyContactResponse(BaseModel):
     user_id: int
     name: str
     phone_number: str
+    email: Optional[str] = None
     relationship: Optional[str]
     is_primary: bool
     created_at: datetime

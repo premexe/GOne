@@ -17,6 +17,7 @@ export default function ProfileScreen() {
   const [contactName, setContactName] = useState('');
   const [contactRelation, setContactRelation] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
 
   const [allergyInput, setAllergyInput] = useState('');
   const [medInput, setMedInput] = useState('');
@@ -54,10 +55,11 @@ export default function ProfileScreen() {
       Alert.alert('Missing Fields', 'Please enter contact name and phone number.');
       return;
     }
-    await addEmergencyContact(contactName, contactRelation || 'Family', contactPhone);
+    await addEmergencyContact(contactName, contactRelation || 'Family', contactPhone, contactEmail.trim() || undefined);
     setContactName('');
     setContactRelation('');
     setContactPhone('');
+    setContactEmail('');
     setIsModalOpen(false);
   };
 
@@ -241,6 +243,11 @@ export default function ProfileScreen() {
               <Text style={styles.contactSub}>
                 {contact.relation} · {contact.phone}
               </Text>
+              {contact.email ? (
+                <Text style={[styles.contactSub, { color: '#60a5fa', fontSize: 11 }]}>
+                  ✉ {contact.email}
+                </Text>
+              ) : null}
             </View>
             <TouchableOpacity onPress={() => removeEmergencyContact(contact.id || '')}>
               <Trash2 size={16} color={COLORS.status.red} />
@@ -296,10 +303,19 @@ export default function ProfileScreen() {
 
             <TextInput
               style={styles.modalInput}
-              placeholder="Phone Number (+1 555-...)"
+              placeholder="Phone Number (+91 9876543210)"
               keyboardType="phone-pad"
               value={contactPhone}
               onChangeText={setContactPhone}
+            />
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Email (for emergency transcript) — optional"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={contactEmail}
+              onChangeText={setContactEmail}
             />
 
             <View style={styles.modalBtnRow}>

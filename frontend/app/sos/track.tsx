@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking, Platform, Modal, ActivityIndicator, FlatList } from 'react-native';
+import { api } from '../../src/services/api';
+import { EmergencyRequest } from '../../src/types';
 import { Phone, ShieldCheck, MapPin, CheckCircle2, Truck, User as UserIcon, Clock, AlertCircle, Building2, ChevronRight, Stethoscope } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, SPACING } from '../../src/constants/theme';
@@ -23,6 +25,41 @@ export default function TrackEmergencyScreen() {
   const endEmergency = useEmergencyStore((s) => s.endEmergency);
 
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [completedCases, setCompletedCases] = useState<EmergencyRequest[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const handleAdvanceStatus = async (nextStatus: string) => {
+    if (!activeRequest?.id) return;
+    setUpdatingStatus(true);
+    try {
+      if (nextStatus === 'ACCEPTED') {
+        const hospId = hospital?.id || '1';
+        await api.acceptSOSAlert(activeRequest.id, hospId);
+      } else {
+        await api.updateSOSDispatchStatus(activeRequest.id, nextStatus);
+      }
+      await refreshActiveEmergency();
+    } catch (e) {
+      console.warn('Advance status failed:', e);
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const handleOpenCompletedCases = async () => {
+    setShowHistoryModal(true);
+    setLoadingHistory(true);
+    try {
+      const data = await api.getMyCompletedEmergencyRequests();
+      setCompletedCases(data);
+    } catch (e) {
+      console.warn('Failed to load completed cases:', e);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const hospital = activeRequest?.acceptedHospital || activeRequest?.matchedHospital;
   const ambulance = activeRequest?.assignedAmbulance;
@@ -38,10 +75,12 @@ export default function TrackEmergencyScreen() {
   }, [refreshActiveEmergency]);
 
   const normDispatch = ((activeRequest as any)?.dispatchStatus || '').toUpperCase();
-  const isResolved = activeRequest?.status === 'closed' || normDispatch === 'COMPLETED';
-  const isArrived = activeRequest?.status === 'arrived' || normDispatch === 'ARRIVED' || normDispatch === 'PATIENT_PICKED_UP';
-  const isAccepted = Boolean(activeRequest?.acceptedHospital || (activeRequest as any)?.hospitalId || normDispatch === 'ACCEPTED' || normDispatch === 'AMBULANCE_ASSIGNED' || normDispatch === 'EN_ROUTE' || isArrived);
-  const isAmbulanceAssigned = Boolean(ambulance || normDispatch === 'AMBULANCE_ASSIGNED' || normDispatch === 'EN_ROUTE' || isArrived);
+  const isResolved = activeRequest?.status === 'closed' || normDispatch === 'COMPLETED' || normDispatch === 'RESOLVED';
+  const isArrivedHospital = normDispatch === 'ARRIVED_AT_HOSPITAL' || isResolved;
+  const isPickedUp = normDispatch === 'PICKED_UP' || normDispatch === 'PATIENT_PICKED_UP' || isArrivedHospital;
+  const isArrivedOnScene = isPickedUp || normDispatch === 'ARRIVED';
+  const isAmbulanceAssigned = Boolean(ambulance || normDispatch === 'AMBULANCE_ASSIGNED' || normDispatch === 'EN_ROUTE' || isArrivedOnScene);
+  const isAccepted = Boolean(activeRequest?.acceptedHospital || (activeRequest as any)?.hospitalId || normDispatch === 'ACCEPTED' || isAmbulanceAssigned);
   const isDoctorAssigned = Boolean(doctor);
 
   // User and Hospital Coordinates
@@ -50,9 +89,9 @@ export default function TrackEmergencyScreen() {
   const hospLat = hospital?.lat || 19.699;
   const hospLng = hospital?.lng || 72.771;
 
-  // Ambulance position: at user position if arrived, else en route between hospital and user
-  const ambLat = isArrived ? userLat : (hospLat * 0.4 + userLat * 0.6);
-  const ambLng = isArrived ? userLng : (hospLng * 0.4 + userLng * 0.6);
+  // Ambulance position: at hospital if arrived at hospital, at user position if on scene/picked up, else en route
+  const ambLat = isArrivedHospital ? hospLat : isArrivedOnScene ? userLat : (hospLat * 0.4 + userLat * 0.6);
+  const ambLng = isArrivedHospital ? hospLng : isArrivedOnScene ? userLng : (hospLng * 0.4 + userLng * 0.6);
 
   // Generate Leaflet OpenStreetMap HTML
   const leafletHtml = useMemo(() => {
@@ -210,17 +249,35 @@ export default function TrackEmergencyScreen() {
       subtitle: ambulance
         ? `${ambulance.vehicleNumber} (Driver: ${ambulance.driverName}) en route`
         : 'Hospital dispatching nearest emergency vehicle',
-      time: ambulance ? 'Dispatched' : 'Pending',
-      status: (isResolved || isArrived) ? 'complete' : isAmbulanceAssigned ? 'active' : 'pending',
+      time: isAmbulanceAssigned ? 'Dispatched' : 'Pending',
+      status: isPickedUp || isArrivedOnScene ? 'complete' : isAmbulanceAssigned ? 'active' : 'pending',
     },
     {
       id: 't5',
-      title: normDispatch === 'PATIENT_PICKED_UP' ? 'Patient Picked Up' : 'Arrived at Location',
-      subtitle: isArrived
-        ? 'Paramedics on scene providing immediate critical care'
-        : 'Paramedics navigating to patient coordinates',
-      time: isResolved ? 'Completed' : isArrived ? 'On Scene' : 'Estimated 4-6 min',
-      status: isResolved ? 'complete' : isArrived ? 'active' : 'pending',
+      title: 'Patient Picked Up',
+      subtitle: isPickedUp
+        ? 'Paramedics confirmed pickup · En route to hospital'
+        : 'Ambulance reaching patient location for immediate care',
+      time: isPickedUp ? 'Confirmed' : isArrivedOnScene ? 'On Scene' : 'Pending',
+      status: isArrivedHospital || isResolved ? 'complete' : isPickedUp ? 'complete' : isArrivedOnScene ? 'active' : 'pending',
+    },
+    {
+      id: 't6',
+      title: 'Arrived at Hospital',
+      subtitle: isArrivedHospital
+        ? `${hospital?.name || 'Hospital'} trauma desk received patient`
+        : 'Transporting patient to hospital emergency bay',
+      time: isArrivedHospital ? 'Arrived' : isPickedUp ? 'In Transit' : 'Pending',
+      status: isResolved ? 'complete' : isArrivedHospital ? 'complete' : isPickedUp ? 'active' : 'pending',
+    },
+    {
+      id: 't7',
+      title: 'Emergency Case Completed',
+      subtitle: isResolved
+        ? 'Patient successfully admitted & stabilized'
+        : 'Final medical handover & treatment ongoing',
+      time: isResolved ? 'Completed' : 'Pending',
+      status: isResolved ? 'complete' : isArrivedHospital ? 'active' : 'pending',
     },
   ];
 
@@ -259,9 +316,13 @@ export default function TrackEmergencyScreen() {
               <View style={[styles.statusDot, isAccepted ? styles.dotGreen : styles.dotAmber]} />
               <Text style={styles.bannerBadgeText}>
                 {isResolved
-                  ? 'EMERGENCY RESOLVED'
-                  : isArrived
-                  ? 'RESPONDER UNIT ARRIVED ON SCENE'
+                  ? 'EMERGENCY CASE COMPLETED · ADMITTED'
+                  : isArrivedHospital
+                  ? 'ARRIVED AT HOSPITAL · EMERGENCY ADMISSION'
+                  : isPickedUp
+                  ? 'PATIENT PICKED UP · IN TRANSIT TO HOSPITAL'
+                  : isArrivedOnScene
+                  ? 'PARAMEDICS ARRIVED ON SCENE'
                   : isAmbulanceAssigned
                   ? 'AMBULANCE EN ROUTE'
                   : isAccepted
@@ -272,7 +333,28 @@ export default function TrackEmergencyScreen() {
             <Text style={styles.liveClockText}>LIVE SYNC</Text>
           </View>
 
-          {isAccepted && hospital ? (
+          {isResolved ? (
+            <View style={styles.acceptedHospitalInfo}>
+              <Text style={styles.acceptedHospitalName}>Case Completed & Resolved</Text>
+              <Text style={styles.acceptedHospitalSub}>
+                Patient has been safely admitted and stabilized at {hospital?.name || 'the emergency trauma center'}.
+              </Text>
+            </View>
+          ) : isArrivedHospital && hospital ? (
+            <View style={styles.acceptedHospitalInfo}>
+              <Text style={styles.acceptedHospitalName}>{hospital.name}</Text>
+              <Text style={styles.acceptedHospitalSub}>
+                Ambulance arrived at emergency bay. Patient intake and trauma care in progress.
+              </Text>
+            </View>
+          ) : isPickedUp && hospital ? (
+            <View style={styles.acceptedHospitalInfo}>
+              <Text style={styles.acceptedHospitalName}>{hospital.name}</Text>
+              <Text style={styles.acceptedHospitalSub}>
+                Paramedics confirmed pickup. In transit to hospital with priority emergency siren.
+              </Text>
+            </View>
+          ) : isAccepted && hospital ? (
             <View style={styles.acceptedHospitalInfo}>
               <Text style={styles.acceptedHospitalName}>{hospital.name}</Text>
               <Text style={styles.acceptedHospitalSub}>
@@ -394,6 +476,89 @@ export default function TrackEmergencyScreen() {
           <TimelineStepper steps={timelineSteps} isDark={true} />
         </View>
 
+        {/* Live Milestone Progression Actions (User Side) */}
+        <View style={styles.userActionCard}>
+          <View style={styles.actionCardHeaderRow}>
+            <Text style={styles.userActionTitle}>LIFECYCLE ACTIONS & PROGRESSION</Text>
+            <TouchableOpacity onPress={handleOpenCompletedCases} style={styles.historyPillBtn}>
+              <Clock size={12} color="#FFFFFF" />
+              <Text style={styles.historyPillText}>Completed Cases</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.userActionSub}>
+            Advance the live emergency milestones directly or view completed cases:
+          </Text>
+
+          <View style={styles.userActionButtons}>
+            {!isAccepted && (
+              <TouchableOpacity
+                style={[styles.stageBtn, { backgroundColor: '#10b981' }]}
+                disabled={updatingStatus}
+                onPress={() => handleAdvanceStatus('ACCEPTED')}
+              >
+                {updatingStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : (
+                  <>
+                    <Building2 size={16} color="#FFFFFF" />
+                    <Text style={styles.stageBtnText}>Confirm Hospital Admission (Accept)</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {isAccepted && !isPickedUp && (
+              <TouchableOpacity
+                style={[styles.stageBtn, { backgroundColor: '#2563EB' }]}
+                disabled={updatingStatus}
+                onPress={() => handleAdvanceStatus('PICKED_UP')}
+              >
+                {updatingStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : (
+                  <>
+                    <Truck size={16} color="#FFFFFF" />
+                    <Text style={styles.stageBtnText}>Confirm Patient Pickup (Ambulance)</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {isPickedUp && !isArrivedHospital && (
+              <TouchableOpacity
+                style={[styles.stageBtn, { backgroundColor: '#7C3AED' }]}
+                disabled={updatingStatus}
+                onPress={() => handleAdvanceStatus('ARRIVED_AT_HOSPITAL')}
+              >
+                {updatingStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : (
+                  <>
+                    <Building2 size={16} color="#FFFFFF" />
+                    <Text style={styles.stageBtnText}>Mark Arrived at Hospital Bay</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {isArrivedHospital && !isResolved && (
+              <TouchableOpacity
+                style={[styles.stageBtn, { backgroundColor: '#059669' }]}
+                disabled={updatingStatus}
+                onPress={() => handleAdvanceStatus('COMPLETED')}
+              >
+                {updatingStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : (
+                  <>
+                    <CheckCircle2 size={16} color="#FFFFFF" />
+                    <Text style={styles.stageBtnText}>Complete Emergency Case & Admit</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {isResolved && (
+              <View style={styles.resolvedBadgeRow}>
+                <CheckCircle2 size={18} color="#10b981" />
+                <Text style={styles.resolvedBadgeText}>This emergency case is completed and closed.</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
         {/* Contact Dispatch Actions */}
         <View style={styles.contactBar}>
           <TouchableOpacity
@@ -424,6 +589,60 @@ export default function TrackEmergencyScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Completed Cases Modal (User Side) */}
+      <Modal visible={showHistoryModal} animationType="slide" transparent={false}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>Completed Emergency Cases</Text>
+              <Text style={styles.modalSubtitle}>Past resolved emergency history & case activities</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowHistoryModal(false)} style={styles.modalCloseBtn}>
+              <Text style={styles.modalCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loadingHistory ? (
+            <ActivityIndicator color="#10b981" style={{ marginTop: 40 }} />
+          ) : completedCases.length === 0 ? (
+            <View style={styles.emptyHistoryBox}>
+              <CheckCircle2 size={40} color="#64748B" />
+              <Text style={styles.emptyHistoryText}>No completed cases recorded on your account yet.</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={completedCases}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ padding: 16, gap: 14 }}
+              renderItem={({ item }) => (
+                <View style={styles.historyCard}>
+                  <View style={styles.historyCardHeader}>
+                    <Text style={styles.historyCardHosp}>{item.acceptedHospital?.name || item.matchedHospital?.name || 'Emergency Center'}</Text>
+                    <View style={styles.historyBadge}>
+                      <Text style={styles.historyBadgeText}>COMPLETED</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.historyDate}>
+                    🕒 {new Date(item.createdAt).toLocaleString()}
+                  </Text>
+                  {item.notes ? <Text style={styles.historyNotes}>Symptoms: {item.notes}</Text> : null}
+                  
+                  {/* Stepper breakdown of completed milestones */}
+                  <View style={styles.historyTimelineBox}>
+                    <Text style={styles.historyTimelineHeader}>CASE ACTIVITY COMPLETED:</Text>
+                    <Text style={styles.historyStepText}>✅ 1. SOS Alert Broadcasted</Text>
+                    <Text style={styles.historyStepText}>✅ 2. Hospital Admission Accepted</Text>
+                    <Text style={styles.historyStepText}>✅ 3. Patient Picked Up by Ambulance</Text>
+                    <Text style={styles.historyStepText}>✅ 4. Arrived at Hospital Emergency Bay</Text>
+                    <Text style={styles.historyStepText}>✅ 5. Patient Safely Admitted & Stabilized</Text>
+                  </View>
+                </View>
+              )}
+            />
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -698,6 +917,181 @@ const styles = StyleSheet.create({
   resolveBtnText: {
     color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  userActionCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: SPACING.cardRadius,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+  },
+  actionCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  userActionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#38BDF8',
+    letterSpacing: 0.8,
+  },
+  historyPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  historyPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  userActionSub: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: 12,
+  },
+  userActionButtons: {
+    gap: 8,
+  },
+  stageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  stageBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  resolvedBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderRadius: 10,
+  },
+  resolvedBadgeText: {
+    color: '#10b981',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#0B132B',
+    paddingTop: 54,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    padding: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 16,
+  },
+  modalCloseText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  emptyHistoryBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 80,
+    gap: 12,
+  },
+  emptyHistoryText: {
+    color: '#64748B',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingHorizontal: 40,
+  },
+  historyCard: {
+    backgroundColor: '#111C38',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  historyCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  historyCardHosp: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  historyBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  historyBadgeText: {
+    color: '#10b981',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  historyDate: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 11,
+    marginBottom: 6,
+  },
+  historyNotes: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  historyTimelineBox: {
+    padding: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    borderRadius: 8,
+    gap: 4,
+  },
+  historyTimelineHeader: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#38BDF8',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  historyStepText: {
+    fontSize: 11,
+    color: '#E2E8F0',
     fontWeight: '600',
   },
 });

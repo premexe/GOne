@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List, Optional
 
 from app.schemas.sos import SOSResponse
 from app.schemas.emergency_response import EmergencyResponseResponse
@@ -13,3 +13,5 @@ class EmergencyTriggerResponse(BaseModel):
     emergency_response: EmergencyResponseResponse
     emergency_contacts: List[EmergencyContactResponse]
     notifications: List[NotificationResponse]
+    # G-ONE AI triage result (empty dict if AI pipeline failed or skipped)
+    ai_triage: Optional[Dict[str, Any]] = None

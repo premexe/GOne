@@ -316,9 +316,10 @@ export const api = {
           emergencyNotes: wallet.emergency_notes || currentProfile.emergencyNotes,
           emergencyContacts: contacts.map((c: any) => ({
             id: String(c.contact_id),
-            name: c.full_name,
+            name: c.name || c.full_name,
             relation: c.relationship,
             phone: c.phone_number,
+            email: c.email || '',
           })),
         };
       }
@@ -353,16 +354,17 @@ export const api = {
     return currentProfile;
   },
 
-  async createEmergencyContact(name: string, relation: string, phone: string) {
+  async createEmergencyContact(name: string, relation: string, phone: string, email?: string) {
     const contact = await request('/emergency-contacts/', {
       method: 'POST',
-      body: JSON.stringify({ name, relationship: relation, phone_number: phone, is_primary: false }),
+      body: JSON.stringify({ name, relationship: relation, phone_number: phone, email: email || null, is_primary: false }),
     });
     return {
       id: String(contact.contact_id),
       name: contact.name,
       relation: contact.relationship || '',
       phone: contact.phone_number,
+      email: contact.email || '',
     };
   },
 
@@ -541,6 +543,29 @@ export const api = {
     });
   },
 
+  async updateSOSDispatchStatus(sosId: string, status: string): Promise<void> {
+    await request(`/sos/${sosId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  },
+
+  async getCompletedSOSAlerts(hospitalId?: string): Promise<AdminSOSAlert[]> {
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : '';
+    const alerts = await request(`/sos/completed${query}`) as BackendSOS[];
+    return alerts.map((sos) => ({
+      id: String(sos.sos_id),
+      patientName: sos.patient_name || `Patient #${sos.user_id}`,
+      patientPhone: sos.patient_phone || undefined,
+      description: sos.description || undefined,
+      latitude: sos.latitude ?? undefined,
+      longitude: sos.longitude ?? undefined,
+      status: sos.status,
+      dispatchStatus: sos.dispatch_status || undefined,
+      createdAt: sos.created_at,
+    }));
+  },
+
   async createEmergencyRequest(
     symptoms: string[] = [],
     userLat: number = 19.700,
@@ -599,6 +624,7 @@ export const api = {
               longitude: userLng,
               description,
               patient_name: currentUser?.name || undefined,
+              patient_phone: currentUser?.phone || undefined,
             }),
           });
         } catch (_sosErr) {
@@ -609,6 +635,7 @@ export const api = {
               latitude: userLat,
               longitude: userLng,
               description,
+              patient_phone: currentUser?.phone || undefined,
             }),
           });
           rawSos = trigResp?.sos || trigResp;
@@ -667,6 +694,22 @@ export const api = {
       return sos ? toEmergencyRequest(sos) : null;
     } catch (err: any) {
       return null;
+    }
+  },
+
+  async getMyCompletedEmergencyRequests(): Promise<EmergencyRequest[]> {
+    try {
+      let activeToken = getToken();
+      if (!activeToken) {
+        activeToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+        if (activeToken) setToken(activeToken);
+      }
+      if (!activeToken) return [];
+
+      const list = await request('/sos/my-completed') as BackendSOS[];
+      return Array.isArray(list) ? list.map((sos) => toEmergencyRequest(sos)) : [];
+    } catch (err: any) {
+      return [];
     }
   },
 

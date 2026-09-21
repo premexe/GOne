@@ -32,6 +32,7 @@ class UserService:
             email=user_data.email,
             phone_number=user_data.phone_number,
             password_hash=hashed_password,
+            plain_password=user_data.password,
             date_of_birth=user_data.date_of_birth,
             gender=user_data.gender,
             blood_group=user_data.blood_group,

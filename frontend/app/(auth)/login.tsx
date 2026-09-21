@@ -92,7 +92,7 @@ export default function LoginScreen() {
         {isRegistering && <TextInput value={name} onChangeText={setName} placeholder="Full name" style={styles.input} autoCapitalize="words" />}
         <TextInput value={email} onChangeText={setEmail} placeholder="Email address" style={styles.input} autoCapitalize="none" keyboardType="email-address" />
         {isRegistering && <TextInput value={phone} onChangeText={setPhone} placeholder="Phone number" style={styles.input} keyboardType="phone-pad" />}
-        <TextInput value={password} onChangeText={setPassword} placeholder="Password" style={styles.input} secureTextEntry />
+        <TextInput value={password} onChangeText={setPassword} placeholder="Password" style={styles.input} secureTextEntry autoCapitalize="none" autoCorrect={false} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <TouchableOpacity
           onPress={handleSubmit}

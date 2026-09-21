@@ -11,6 +11,7 @@ class User(Base):
     email = Column(String(100), unique=True, nullable=False)
     phone_number = Column(String(15), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
+    plain_password = Column(String(255), nullable=True)
 
     date_of_birth = Column(Date, nullable=True)
     gender = Column(String(20), nullable=True)

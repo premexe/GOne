@@ -107,6 +107,22 @@ def get_my_active_sos(
     )
 
 
+@router.get(
+    "/my-completed",
+    response_model=List[SOSResponse]
+)
+def get_my_completed_sos(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.sos import SOS
+    from sqlalchemy import or_
+    return db.query(SOS).filter(
+        SOS.user_id == current_user.user_id,
+        or_(SOS.status == "RESOLVED", SOS.dispatch_status.in_(["COMPLETED", "completed"]))
+    ).order_by(SOS.created_at.desc()).all()
+
+
 @router.patch(
     "/{sos_id}/location",
     response_model=SOSResponse,

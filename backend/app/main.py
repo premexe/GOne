@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database.connection import engine
 from app.database.base import Base
+from app.database.migrations import run_migrations
 
 import app.models
 
@@ -17,6 +18,7 @@ from app.routers.medical_records import router as medical_records_router
 from app.routers.hospitals import router as hospital_router
 from app.routers.doctors import router as doctors_router
 from app.routers.ambulances import router as ambulances_router
+from app.routers.voice import router as voice_router
 
 app = FastAPI(title="LifeLink AI API")
 
@@ -30,6 +32,9 @@ app.add_middleware(
 
 Base.metadata.create_all(bind=engine)
 
+# Run lightweight schema migrations to add new columns to existing tables
+run_migrations()
+
 app.include_router(user_router)
 app.include_router(emergency_wallet_router)
 app.include_router(sos_router)
@@ -41,6 +46,7 @@ app.include_router(medical_records_router)
 app.include_router(hospital_router)
 app.include_router(doctors_router)
 app.include_router(ambulances_router)
+app.include_router(voice_router)
 
 @app.get("/")
 def root():

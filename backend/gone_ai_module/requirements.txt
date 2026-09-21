@@ -1,0 +1,18 @@
+# G-ONE AI Module — dependencies
+#
+# Core validation/preprocessing/deterministic services (schemas, preprocessing,
+# medical_capability, health_summary, emergency_report, the Tier 3 rule engine)
+# use only the Python standard library — no dependency required to run them.
+#
+# The Gemini tier (Tier 1) in emergency understanding is optional: if
+# GEMINI_API_KEY is not set, or this SDK is not installed, the module
+# automatically falls through to Ollama (Tier 2) and then the deterministic
+# rule engine (Tier 3). Install this only if you want Tier 1 available.
+google-genai>=0.3,<1.0
+
+# The Ollama tier (Tier 2) uses Python's built-in urllib — no extra package
+# needed. Requires a local Ollama server running the configured model
+# (default: qwen2.5:1.5b) if you want Tier 2 available.
+
+# Test-only dependency, not required to run the module itself.
+pytest>=7.4,<9

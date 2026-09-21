@@ -30,6 +30,11 @@ class EmergencyContact(Base):
         nullable=False
     )
 
+    email = Column(
+        String(100),
+        nullable=True
+    )
+
     relationship = Column(
         String(50),
         nullable=True
