@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, View, TouchableOpacity, StyleSheet, Keyboard } from 'react-native';
 import { Home, MapPin, Wallet, User } from 'lucide-react-native';
 import { router, usePathname } from 'expo-router';
 import { COLORS, SPACING } from '../constants/theme';
@@ -18,6 +18,7 @@ export const BottomNav: React.FC = () => {
   ];
 
   const handleSOSConfirm = async () => {
+    Keyboard.dismiss();
     try {
       await triggerSOS();
       router.push('/sos/emergency');
@@ -105,10 +106,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     width: '100%',
-    shadowColor: '#0B2545',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
+    boxShadow: '0px 10px 20px rgba(11, 37, 69, 0.12)',
     elevation: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -131,10 +129,7 @@ const styles = StyleSheet.create({
   },
   activeCircleButton: {
     backgroundColor: COLORS.brand,
-    shadowColor: COLORS.brand,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    boxShadow: '0px 4px 6px rgba(11, 37, 69, 0.3)',
     elevation: 4,
   },
 });

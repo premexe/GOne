@@ -4,25 +4,28 @@
     "slug": "lifelink-ai-plus",
     "version": "1.0.0",
     "orientation": "portrait",
-    "softwareKeyboardLayoutMode": "resize",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "scheme": "lifelink",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
-    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.lifelink.aiplus"
+      "bundleIdentifier": "com.lifelink.aiplus",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "package": "com.lifelink.aiplus"
+      "package": "com.lifelink.aiplus",
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -40,6 +43,12 @@
       "expo-speech-recognition",
       "expo-asset",
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5ae13db1-64be-453a-b830-403ccc0910d8"
+      }
+    }
   }
 }

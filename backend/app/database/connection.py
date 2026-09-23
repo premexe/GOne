@@ -2,8 +2,9 @@ from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import os
 import logging
+from pathlib import Path
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
@@ -29,4 +30,4 @@ def get_engine():
         echo=False
     )
 
-engine = get_engine()
+engine = get_engine()

@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 function getExpoGoApiUrl(): string | null {
   // Expo provides the host used by the QR-code development server, for example
@@ -13,9 +14,11 @@ function getExpoGoApiUrl(): string | null {
 
 // In Expo Go development, this follows the laptop's current Wi-Fi IP
 // automatically. A fixed EXPO_PUBLIC_API_URL is used only for web/production.
-const API_URL = process.env.EXPO_PUBLIC_API_URL
+const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+const isDeviceLocalhost = Platform.OS !== 'web' && Boolean(configuredApiUrl?.match(/localhost|127\.0\.0\.1/));
+const API_URL = (!isDeviceLocalhost ? configuredApiUrl : null)
   || (__DEV__ ? getExpoGoApiUrl() : null)
-  || 'http://127.0.0.1:8000';
+  || 'http://192.168.0.100:8000';
 
 let token: string | null = null;
 

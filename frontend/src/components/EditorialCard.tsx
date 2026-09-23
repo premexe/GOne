@@ -56,10 +56,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
-    shadowColor: '#0B2545',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
+    boxShadow: '0px 4px 10px rgba(11, 37, 69, 0.04)',
     elevation: 2,
   },
   imageContainer: {

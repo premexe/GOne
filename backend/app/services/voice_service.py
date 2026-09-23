@@ -1,89 +1,58 @@
 """
-Voice Service — Real-Time AI Phone Call via Twilio.
+Voice Service — Real-Time AI Phone Call via Bland AI Agent.
 
 Flow:
-  1. SOS is created  →  initiate_call() places an outbound call to the patient.
-  2. Twilio hits /voice/call-twiml/{sos_id}  →  initial AI greeting + Gather.
-  3. Patient speaks  →  /voice/process-turn/{sos_id} receives the transcript.
-  4. Gemini generates a contextual follow-up question (max 3 turns).
-  5. On call completion  →  /voice/status/{sos_id} triggers finalize_call():
-       • persists full transcript & summary to SOS record
-       • calls EmailService to send the transcript email
+  1. SOS is triggered -> initiate_call() dispatches an autonomous Bland AI voice call.
+  2. Bland AI contacts the patient's phone and holds a real-time voice conversation.
+     (No incoming webhook or ngrok is required during the live conversation!)
+  3. When the call completes, Bland provides:
+     - Full conversation transcript (concatenated_transcript)
+     - AI clinical summary of patient condition
+     - Call recording
+  4. The background monitor (or optional post-call webhook) persists the transcript
+     and triggers EmailService to alert emergency contacts.
 
-Simulation mode:
-  When TWILIO_* credentials are absent, all operations are logged only —
-  no external calls are made and the server never crashes.
-
-Required env vars (all optional for simulation):
-  TWILIO_ACCOUNT_SID
-  TWILIO_AUTH_TOKEN
-  TWILIO_PHONE_NUMBER   # E.164 caller ID
-  PUBLIC_BACKEND_URL    # HTTPS URL reachable by Twilio webhooks
-  GEMINI_API_KEY        # Reuses the existing key from the AI pipeline
+Environment Variables:
+  BLAND_API_KEY (or Bland_api) : Bland AI organization API key
+  BLAND_VOICE                  : AI voice name or ID (default: "maya")
+  ENABLE_SOS_VOICE_CALLS       : Set to "true" to place real calls (default: "true")
+  PUBLIC_BACKEND_URL           : Optional public URL for post-call webhooks
 """
 
 import json
-import ipaddress
 import logging
 import os
 import re
-from typing import Optional
+import threading
+import time
+from typing import Optional, Dict, Any
 from urllib.parse import urlparse
 
+import requests
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 
 from app.models.sos import SOS
 from app.models.emergency_wallet import EmergencyWallet
 from app.models.users import User
+from app.database.session import SessionLocal
 
 logger = logging.getLogger(__name__)
 
-# Keep this module safe when it is imported directly by a worker, shell, or test.
 load_dotenv()
 
-# ── Env ──────────────────────────────────────────────────────────────────────
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "")
-PUBLIC_BACKEND_URL = os.getenv("PUBLIC_BACKEND_URL", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-ENABLE_SOS_VOICE_CALLS = os.getenv("ENABLE_SOS_VOICE_CALLS", "false").strip().lower() in {"1", "true", "yes", "on"}
+BLAND_API_KEY = (os.getenv("BLAND_API_KEY") or os.getenv("Bland_api") or "").strip()
+BLAND_VOICE = (os.getenv("BLAND_VOICE") or "maya").strip()
+ENABLE_SOS_VOICE_CALLS = (os.getenv("ENABLE_SOS_VOICE_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"})
+PUBLIC_BACKEND_URL = os.getenv("PUBLIC_BACKEND_URL", "").strip().rstrip("/")
+BLAND_API_BASE = "https://api.bland.ai/v1"
 
-def _public_webhook_base_url() -> Optional[str]:
-    """Return a safe Twilio-reachable webhook URL, or None when misconfigured."""
-    value = PUBLIC_BACKEND_URL.strip().rstrip("/")
-    parsed = urlparse(value)
-    if parsed.scheme != "https" or not parsed.netloc:
-        return None
-    # Twilio cannot reach a loopback/LAN URL, and accepting one creates opaque URL errors.
-    host = (parsed.hostname or "").lower()
-    if host == "localhost":
-        return None
-    try:
-        if ipaddress.ip_address(host).is_private or ipaddress.ip_address(host).is_loopback:
-            return None
-    except ValueError:
-        pass
-    return value
-
-
-WEBHOOK_BASE_URL = _public_webhook_base_url()
-_TWILIO_READY = all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, WEBHOOK_BASE_URL])
-_GEMINI_READY = bool(GEMINI_API_KEY)
-
-MAX_TURNS = 3  # How many back-and-forth turns before gracefully closing the call
-
-# ── Phone Normalisation ───────────────────────────────────────────────────────
 
 def _normalise_phone(phone: str, default_country: str = "+91") -> Optional[str]:
-    """
-    Ensure phone number is in E.164 format.
-    10-digit numbers are assumed to be Indian and prefixed with +91.
-    """
+    """Ensure phone number is in E.164 format (+91XXXXXXXXXX)."""
     if not phone:
         return None
-    digits = re.sub(r"[^\d+]", "", phone)
+    digits = re.sub(r"[^\d+]", "", phone.strip())
     if digits.startswith("+"):
         return digits if len(digits) >= 8 else None
     if len(digits) == 10:
@@ -95,110 +64,21 @@ def _normalise_phone(phone: str, default_country: str = "+91") -> Optional[str]:
     return None
 
 
-# ── TwiML Helpers ─────────────────────────────────────────────────────────────
-
-def _twiml_gather_response(message: str, action_url: str, voice: str = "Polly.Aditi") -> str:
-    """Return TwiML that speaks a message then gathers speech input."""
-    safe_msg = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-    safe_url = action_url.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Gather input="speech" action="{safe_url}" method="POST" language="en-IN" speechTimeout="auto" timeout="8">
-    <Say voice="{voice}" language="en-IN">{safe_msg}</Say>
-  </Gather>
-  <Say voice="{voice}" language="en-IN">We didn't catch that. Please stay on the line — emergency responders have your GPS location.</Say>
-  <Hangup/>
-</Response>"""
-
-
-def _twiml_say_hangup(message: str, voice: str = "Polly.Aditi") -> str:
-    """Return TwiML that speaks a closing message and hangs up."""
-    safe_msg = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="{voice}" language="en-IN">{safe_msg}</Say>
-  <Hangup/>
-</Response>"""
-
-
-# ── Gemini AI Response ────────────────────────────────────────────────────────
-
-def _generate_ai_response(
-    transcript_so_far: str,
-    patient_speech: str,
-    wallet_context: str,
-    turn: int,
-) -> str:
-    """
-    Uses Gemini to generate a calm, concise voice response for the patient.
-    Falls back to a safe canned response if Gemini is unavailable.
-    """
-    if not _GEMINI_READY:
-        fallback_prompts = [
-            "Can you tell me where you are and what happened?",
-            "Are you conscious and breathing normally? Is there any bleeding?",
-            "Help is on the way. Please stay calm and stay on the line.",
-        ]
-        return fallback_prompts[min(turn, len(fallback_prompts) - 1)]
-
-    try:
-        from google import genai  # type: ignore
-
-        client = genai.Client(api_key=GEMINI_API_KEY)
-
-        system_prompt = f"""You are LifeLink's emergency AI responder on a real-time phone call.
-The patient has triggered an emergency SOS alert.
-Your role: gather critical information quickly and calmly to assist dispatchers.
-
-Patient's medical context:
-{wallet_context if wallet_context else "No medical wallet on file."}
-
-Conversation so far:
-{transcript_so_far}
-
-Patient just said: "{patient_speech}"
-
-This is turn {turn + 1} of maximum {MAX_TURNS}.
-
-Rules:
-- Respond in 1-2 short sentences spoken aloud — no markdown, no lists.
-- If turn >= {MAX_TURNS - 1}: reassure the patient that help is coming and close the call.
-- Ask ONE targeted follow-up: bleeding, consciousness, pain level, hazards (fire/gas/traffic), or specific location.
-- Keep tone: calm, professional, warm, urgent but not alarming.
-- Do NOT use bullet points, asterisks, or any formatting.
-- Speak naturally as if on a phone call.
-"""
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=system_prompt,
-            )
-        except Exception:
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=system_prompt,
-            )
-        text = response.text.strip()
-        # Remove any markdown artefacts
-        text = re.sub(r"\*+", "", text)
-        text = re.sub(r"#+ ", "", text)
-        return text[:400]  # Limit response length for TTS
-
-    except Exception as e:
-        logger.warning("Gemini voice response failed: %s", e)
-        return "Understood. Please stay calm — emergency responders have your location and are on their way. Is there anything else critical I should know?"
+def _mask_phone(phone: Optional[str]) -> str:
+    """Keep logs useful without exposing the patient's full phone number."""
+    if not phone:
+        return "<missing>"
+    return f"***{phone[-4:]}"
 
 
 def _build_wallet_summary(db: Session, user_id: int) -> str:
-    """Return a compact text summary of the patient's medical wallet."""
+    """Return a compact text summary of the patient's emergency medical wallet."""
     try:
         wallet: Optional[EmergencyWallet] = (
-            db.query(EmergencyWallet)
-            .filter(EmergencyWallet.user_id == user_id)
-            .first()
+            db.query(EmergencyWallet).filter(EmergencyWallet.user_id == user_id).first()
         )
         if not wallet:
-            return ""
+            return "No medical wallet on file."
         parts = []
         if wallet.blood_group:
             parts.append(f"Blood Group: {wallet.blood_group}")
@@ -207,326 +87,445 @@ def _build_wallet_summary(db: Session, user_id: int) -> str:
         if wallet.chronic_conditions:
             parts.append(f"Chronic Conditions: {wallet.chronic_conditions}")
         if wallet.current_medications:
-            parts.append(f"Medications: {wallet.current_medications}")
+            parts.append(f"Current Medications: {wallet.current_medications}")
         if wallet.emergency_notes:
-            parts.append(f"Notes: {wallet.emergency_notes}")
-        return " | ".join(parts)
-    except Exception:
-        return ""
+            parts.append(f"Emergency Notes: {wallet.emergency_notes}")
+        return " | ".join(parts) if parts else "No medical conditions noted."
+    except Exception as e:
+        logger.warning("Could not read medical wallet: %s", e)
+        return "Not available."
 
 
-def _generate_call_summary(transcript: str, ai_report: Optional[str]) -> str:
-    """Use Gemini to generate a brief clinical summary of the call."""
-    if not _GEMINI_READY or not transcript.strip():
-        return ai_report or "Emergency call completed. See transcript for details."
-    try:
-        from google import genai  # type: ignore
+def _summarize_transcript(transcript: str, default_prefix: str = "Emergency call summary") -> str:
+    """Build a compact summary from the transcript when the voice session has no explicit summary."""
+    cleaned = (transcript or "").strip()
+    if not cleaned:
+        return f"{default_prefix}: transcript unavailable."
 
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        prompt = f"""Summarise this emergency AI voice call transcript in 2-3 sentences for a medical dispatcher.
-Include: what happened, patient condition, any mentioned location details.
-Be concise and clinical.
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    if not lines:
+        return f"{default_prefix}: transcript unavailable."
 
-Transcript:
-{transcript}
+    patient_lines = [l for l in lines if l.lower().startswith("patient:")]
+    ai_lines = [l for l in lines if l.lower().startswith("ai:")]
+    patient_text = " ".join(l.split(":", 1)[1].strip() for l in patient_lines if ":" in l)
+    ai_text = " ".join(l.split(":", 1)[1].strip() for l in ai_lines if ":" in l)
 
-Existing AI report:
-{ai_report or 'None'}
-"""
+    if patient_text:
+        return f"{default_prefix}: {patient_text[:500]}"
+    if ai_text:
+        return f"{default_prefix}: {ai_text[:500]}"
+    return f"{default_prefix}: {cleaned[:500]}"
+
+
+def _get_bland_headers() -> Dict[str, str]:
+    api_key = (os.getenv("BLAND_API_KEY") or os.getenv("Bland_api") or "").strip()
+    return {
+        "authorization": api_key,
+        "Content-Type": "application/json",
+    }
+
+
+def _monitor_bland_call(sos_id: int, call_id: str, max_wait_seconds: int = 300):
+    """
+    Background worker that monitors Bland AI call completion.
+    Retrieves full transcript and summary, persists them to the SOS record,
+    and dispatches notification emails to emergency contacts.
+    """
+    logger.info("Started Bland AI call monitor for SOS %s (call_id=%s)", sos_id, call_id)
+    time.sleep(12)  # Wait for call to connect
+
+    start_time = time.time()
+    while time.time() - start_time < max_wait_seconds:
+        time.sleep(8)
         try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-            )
-        except Exception:
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=prompt,
-            )
-        return response.text.strip()[:800]
-    except Exception as e:
-        logger.warning("Call summary generation failed: %s", e)
-        return ai_report or "Emergency call transcript is available above."
+            url = f"{BLAND_API_BASE}/calls/{call_id}"
+            resp = requests.get(url, headers=_get_bland_headers(), timeout=15)
+            if resp.status_code != 200:
+                logger.warning("Bland call status query returned %s for %s", resp.status_code, call_id)
+                continue
 
+            data = resp.json()
+            # Bland returns call data at top-level or under 'call'
+            call_obj = data.get("call") or data
+            call_status = str(call_obj.get("status", "")).lower()
 
-# ── Twilio Client Helper ──────────────────────────────────────────────────────
+            logger.info("Bland call %s status: %s", call_id, call_status)
 
-def _get_twilio_client():
-    if not _TWILIO_READY:
-        return None
-    try:
-        from twilio.rest import Client  # type: ignore
-        return Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-    except Exception as e:
-        logger.error("Failed to create Twilio client: %s", e)
-        return None
+            if call_status in {"completed", "ended", "complete"}:
+                transcript = call_obj.get("concatenated_transcript") or ""
+                summary = call_obj.get("summary") or ""
 
+                db = SessionLocal()
+                try:
+                    VoiceService.save_call_results(
+                        db,
+                        sos_id=sos_id,
+                        call_sid=call_id,
+                        status="COMPLETED",
+                        transcript=transcript,
+                        summary=summary,
+                    )
+                finally:
+                    db.close()
+                return
 
-# ── Public API ────────────────────────────────────────────────────────────────
+            if call_status in {"failed", "no-answer", "busy", "canceled", "error"}:
+                db = SessionLocal()
+                try:
+                    VoiceService.save_call_results(
+                        db,
+                        sos_id=sos_id,
+                        call_sid=call_id,
+                        status=call_status.upper(),
+                        transcript="",
+                        summary=f"Call ended with status: {call_status}",
+                    )
+                finally:
+                    db.close()
+                return
+
+        except Exception as err:
+            logger.warning("Error monitoring Bland AI call %s: %s", call_id, err)
+
+    logger.info("Bland call monitor timed out for SOS %s", sos_id)
+
 
 class VoiceService:
 
     @staticmethod
+    def build_agent_questions(patient_name: str = "Patient", emergency_description: str = "") -> list[str]:
+        """Return a short emergency-checklist Q&A sequence for the in-app AI agent."""
+        desc = (emergency_description or "").strip()
+        if desc:
+            prefix = f"I can see you reported: {desc}. "
+        else:
+            prefix = ""
+
+        return [
+            f"{prefix}Can you tell me exactly what happened and how you are feeling right now?",
+            "Are you conscious and breathing normally right now?",
+            "Do you have any chest pain, severe bleeding, or trouble speaking or moving?",
+            "Please stay in a safe position and tell me if anyone is with you or if you need immediate help.",
+        ]
+
+    @staticmethod
+    def normalize_transcript(transcript: str) -> str:
+        """Clean transcript text from the app and the structured AI flow."""
+        if not transcript:
+            return ""
+        cleaned = transcript.strip()
+        if not cleaned:
+            return ""
+        lines = []
+        for line in cleaned.splitlines():
+            text = line.strip()
+            if text:
+                lines.append(text)
+        return "\n".join(lines)
+
+    @staticmethod
     def is_calling_enabled() -> bool:
-        """Real calls are opt-in so development and automated tests never spend Twilio credit."""
-        return ENABLE_SOS_VOICE_CALLS and _TWILIO_READY
+        api_key = (os.getenv("BLAND_API_KEY") or os.getenv("Bland_api") or "").strip()
+        enabled = os.getenv("ENABLE_SOS_VOICE_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+        return bool(api_key) and enabled
 
     @staticmethod
     def initiate_call(db: Session, sos_id: int, patient_phone: str) -> dict:
         """
-        Place an outbound AI call to the patient after SOS is triggered.
-        Returns dict with call_sid and status.
+        Place an outbound AI phone call to the patient via Bland AI agent.
         """
+        sos: Optional[SOS] = db.query(SOS).filter(SOS.sos_id == sos_id).first()
+        user = db.query(User).filter(User.user_id == sos.user_id).first() if sos else None
+        patient_phone = user.phone_number if user else patient_phone
         phone_e164 = _normalise_phone(patient_phone)
+        logger.info(
+            "Bland dispatch started | sos=%s user=%s phone=%s normalized=%s",
+            sos_id,
+            sos.user_id if sos else "<missing>",
+            _mask_phone(patient_phone),
+            _mask_phone(phone_e164),
+        )
         if not phone_e164:
-            logger.warning("VoiceService: Invalid phone '%s' for SOS %s", patient_phone, sos_id)
+            logger.warning("Bland dispatch stopped | sos=%s reason=INVALID_PHONE", sos_id)
             return {"call_sid": None, "status": "INVALID_PHONE", "simulated": True}
 
         # Prevent duplicate calls for the same SOS
-        sos: Optional[SOS] = db.query(SOS).filter(SOS.sos_id == sos_id).first()
         if sos and sos.call_sid:
             logger.info("Call already placed for SOS %s (call_sid=%s), skipping duplicate.", sos_id, sos.call_sid)
             return {"call_sid": sos.call_sid, "status": sos.call_status or "IN_PROGRESS", "simulated": False}
 
-        if not ENABLE_SOS_VOICE_CALLS:
-            logger.info("Voice calls are disabled for SOS %s; no Twilio call was placed.", sos_id)
+        api_key = (os.getenv("BLAND_API_KEY") or os.getenv("Bland_api") or "").strip()
+        enabled = os.getenv("ENABLE_SOS_VOICE_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+        logger.info(
+            "Bland configuration | sos=%s api_key_present=%s calls_enabled=%s voice=%s webhook=%s",
+            sos_id,
+            bool(api_key),
+            enabled,
+            os.getenv("BLAND_VOICE", "maya").strip() or "maya",
+            bool(os.getenv("PUBLIC_BACKEND_URL", "").strip()),
+        )
+
+        if not enabled:
+            logger.info("Voice calls are disabled (ENABLE_SOS_VOICE_CALLS=false) for SOS %s.", sos_id)
             if sos:
                 sos.call_status = "DISABLED"
                 db.commit()
             return {"call_sid": None, "status": "DISABLED", "simulated": False}
 
-        if not _TWILIO_READY:
-            configuration_error = (
-                "PUBLIC_BACKEND_URL must be a publicly reachable HTTPS URL"
-                if not WEBHOOK_BASE_URL else "Twilio credentials are incomplete"
-            )
-            logger.warning("Voice call not placed for SOS %s: %s", sos_id, configuration_error)
+        if not api_key:
+            err_msg = "BLAND_API_KEY is missing in backend/.env"
+            logger.warning("Voice call not placed for SOS %s: %s", sos_id, err_msg)
             if sos:
                 sos.call_status = "CONFIGURATION_ERROR"
                 db.commit()
-            return {"call_sid": None, "status": "CONFIGURATION_ERROR", "error": configuration_error, "simulated": False}
+            return {"call_sid": None, "status": "CONFIGURATION_ERROR", "error": err_msg, "simulated": False}
 
-        if not _TWILIO_READY:  # Unreachable after the configuration check above.
-            logger.info(
-                "[CALL SIMULATED] SOS=%s → would call %s | Add Twilio credentials to enable real calls.",
-                sos_id, phone_e164
-            )
-            sos: Optional[SOS] = db.query(SOS).filter(SOS.sos_id == sos_id).first()
-            if sos:
-                sos.call_status = "SIMULATED"
-                db.commit()
-            return {"call_sid": f"SIMULATED_{sos_id}", "status": "SIMULATED", "simulated": True}
+        # Build patient profile context
+        patient_name = sos.patient_name if sos and sos.patient_name else "there"
+        first_name = patient_name.split()[0] if patient_name != "there" else "there"
+        user_id = sos.user_id if sos else 0
+        wallet_summary = _build_wallet_summary(db, user_id)
+        description = sos.description if sos and sos.description else "Emergency SOS alert triggered."
+
+        task_prompt = f"""You are LifeLink's Emergency Medical AI Voice Responder.
+You are calling a patient who just triggered an urgent emergency SOS signal on their LifeLink app.
+
+PATIENT INFORMATION:
+- Name: {patient_name}
+- Emergency Description / Symptoms: {description}
+- Medical Profile & Allergies: {wallet_summary}
+
+YOUR CRITICAL RESPONSIBILITIES:
+1. Reassure the patient immediately that their emergency SOS has been received and local emergency response teams are being notified.
+2. Ask clear, empathetic, direct questions to triage their condition:
+   - Are you conscious and breathing normally?
+   - Is there any bleeding, chest pain, difficulty breathing, or severe injury?
+   - Are you alone or is someone with you?
+3. Provide vital safety instructions:
+   - Tell them to sit or lie down in a safe position.
+   - Instruct them not to move if there is severe pain, neck/spinal injury, or fracture.
+   - Keep them calm and breathing slowly.
+4. Conversation Guidelines:
+   - Keep each spoken response short (1 to 2 sentences max).
+   - Be calm, warm, authoritative, and empathetic.
+   - Do NOT use markdown, bullet points, or complex jargon.
+   - Conclude the call by reassuring them that help is en route and to stay safe.
+"""
+
+        first_sentence = (
+            f"Hello {first_name}, this is LifeLink Emergency AI. "
+            "We received your emergency S O S alert and responders are being notified. "
+            "Can you tell me what happened and how you are feeling right now?"
+        )
+
+        voice_name = os.getenv("BLAND_VOICE", "maya").strip()
+        public_url = os.getenv("PUBLIC_BACKEND_URL", "").strip().rstrip("/")
+
+        payload: Dict[str, Any] = {
+            "phone_number": phone_e164,
+            "task": task_prompt,
+            "first_sentence": first_sentence,
+            "voice": voice_name,
+            "language": "en",
+            "record": True,
+            "wait_for_greeting": False,
+            "max_duration": 5,
+            "summary_prompt": (
+                "Summarize this emergency voice call in 2-3 concise sentences for medical dispatchers. "
+                "Specify what happened, patient condition, pain level, symptoms, and urgency."
+            ),
+            "request_data": {
+                "sos_id": sos_id,
+                "patient_name": patient_name,
+                "patient_phone": phone_e164,
+            },
+        }
+
+        # If a public webhook URL is configured, attach it as post-call webhook
+        if public_url and public_url.startswith("https://"):
+            payload["webhook"] = f"{public_url}/voice/bland-webhook/{sos_id}"
 
         try:
-            client = _get_twilio_client()
-            if not client:
-                raise RuntimeError("Twilio client unavailable")
-
-            twiml_url = f"{WEBHOOK_BASE_URL}/voice/call-twiml/{sos_id}"
-            status_url = f"{WEBHOOK_BASE_URL}/voice/status/{sos_id}"
-
-            # For trial accounts, minimal parameters (to, from_, url) are strictly required
-            call = client.calls.create(
-                to=phone_e164,
-                from_=TWILIO_PHONE_NUMBER,
-                url=twiml_url,
-                status_callback=status_url,
-                status_callback_event=["completed"],
-                status_callback_method="POST",
+            logger.info("Dispatching Bland AI call for SOS %s to %s (voice=%s)", sos_id, phone_e164, voice_name)
+            response = requests.post(
+                f"{BLAND_API_BASE}/calls",
+                headers=_get_bland_headers(),
+                json=payload,
+                timeout=20,
             )
 
-            # Persist call SID immediately
-            sos: Optional[SOS] = db.query(SOS).filter(SOS.sos_id == sos_id).first()
+            res_data = response.json()
+            logger.info(
+                "Bland response | sos=%s http_status=%s call_id_present=%s response_status=%s request_id=%s",
+                sos_id,
+                response.status_code,
+                bool(res_data.get("call_id")),
+                res_data.get("status"),
+                response.headers.get("x-request-id") or response.headers.get("request-id") or "<none>",
+            )
+
+            if response.status_code not in {200, 201} or res_data.get("status") == "error":
+                err = res_data.get("message") or res_data.get("errors") or str(res_data)
+                logger.error(
+                    "Bland dispatch failed | sos=%s http_status=%s error=%s",
+                    sos_id,
+                    response.status_code,
+                    err,
+                )
+                if sos:
+                    sos.call_status = "FAILED"
+                    db.commit()
+                return {"call_sid": None, "status": "FAILED", "error": str(err), "simulated": False}
+
+            call_id = res_data.get("call_id")
             if sos:
-                sos.call_sid = call.sid
+                sos.call_sid = call_id
                 sos.call_status = "IN_PROGRESS"
                 db.commit()
+            logger.info("Bland dispatch accepted | sos=%s call_id=%s", sos_id, call_id or "<missing>")
 
-            logger.info("Twilio call initiated | sos=%s call_sid=%s phone=%s", sos_id, call.sid, phone_e164)
-            return {"call_sid": call.sid, "status": "IN_PROGRESS", "simulated": False}
+            # Launch background thread to monitor call completion and fetch transcript
+            if call_id:
+                threading.Thread(
+                    target=_monitor_bland_call,
+                    args=(sos_id, call_id),
+                    daemon=True,
+                ).start()
+
+            return {"call_sid": call_id, "status": "IN_PROGRESS", "simulated": False}
 
         except Exception as e:
-            logger.error("VoiceService.initiate_call failed | sos=%s error=%s", sos_id, e)
-            sos: Optional[SOS] = db.query(SOS).filter(SOS.sos_id == sos_id).first()
+            logger.exception("Bland dispatch exception | sos=%s error=%s", sos_id, e)
             if sos:
                 sos.call_status = "FAILED"
                 db.commit()
             return {"call_sid": None, "status": "FAILED", "error": str(e), "simulated": False}
 
     @staticmethod
-    def get_initial_twiml(db: Session, sos_id: int) -> str:
-        """
-        Return TwiML for the initial call greeting.
-        Called by Twilio webhook: GET/POST /voice/call-twiml/{sos_id}
-        """
-        sos: Optional[SOS] = db.query(SOS).filter(SOS.sos_id == sos_id).first()
-        patient_name = sos.patient_name if sos else "there"
-        first_name = patient_name.split()[0] if patient_name else "there"
-
-        greeting = (
-            f"Hello {first_name}, this is LifeLink Emergency AI. "
-            "We received your emergency SOS signal and help is being dispatched to your location. "
-            "I'm here to assist you and gather important information for the responders. "
-            "Can you please tell me what happened and how you are feeling right now?"
-        )
-
-        action_url = f"{WEBHOOK_BASE_URL}/voice/process-turn/{sos_id}?turn=0"
-        return _twiml_gather_response(greeting, action_url)
-
-    @staticmethod
-    def process_speech_turn(
+    def save_call_results(
         db: Session,
         sos_id: int,
-        speech_result: str,
-        turn: int,
-    ) -> str:
-        """
-        Process one spoken turn from the patient and return next TwiML.
-        Called by Twilio webhook: POST /voice/process-turn/{sos_id}
-        """
+        call_sid: str,
+        status: str,
+        transcript: str,
+        summary: str,
+    ):
+        """Persist call transcript and summary, then dispatch emails."""
         sos: Optional[SOS] = db.query(SOS).filter(SOS.sos_id == sos_id).first()
         if not sos:
-            return _twiml_say_hangup("We couldn't locate your emergency record. Please call emergency services directly. Stay safe.")
+            logger.warning("save_call_results: SOS %s not found", sos_id)
+            return
 
-        # Build current transcript
-        existing = sos.call_transcript or ""
-        new_entry = f"Patient: {speech_result.strip()}"
-        updated_transcript = f"{existing}\n{new_entry}".strip()
+        transcript_text = VoiceService.normalize_transcript(transcript or "")
+        if transcript_text:
+            sos.call_transcript = transcript_text
 
-        # Get wallet context
-        wallet_ctx = _build_wallet_summary(db, sos.user_id)
+        summary_text = (summary or "").strip()
+        if not summary_text:
+            summary_text = _summarize_transcript(transcript_text)
+            logger.info("Generated fallback transcript summary for SOS %s", sos_id)
+        sos.call_summary = summary_text
 
-        if turn >= MAX_TURNS - 1:
-            # Final turn — close the call
-            closing = (
-                "Thank you for the information. Our emergency team has received everything. "
-                "Responders are on their way to your location right now. "
-                "Please stay calm, stay on the line with anyone near you, and do not move unless there is immediate danger. "
-                "LifeLink AI will send a full report to you and your emergency contacts. Take care."
-            )
-            ai_entry = f"AI: {closing}"
-            full_transcript = f"{updated_transcript}\n{ai_entry}".strip()
-            summary = _generate_call_summary(full_transcript, sos.ai_emergency_report)
-
-            # Persist
-            sos.call_transcript = full_transcript
-            sos.call_summary = summary
-            sos.call_status = "COMPLETED"
-            db.commit()
-
-            # Trigger email async-style (inline — fast enough for transcript)
+        # Add AI emergency summary when the speech transcript is available.
+        if transcript_text:
             try:
-                from app.services.email_service import EmailService
-                EmailService.send_sos_transcript_emails(db, sos_id)
-            except Exception as e:
-                logger.warning("Email dispatch failed after call turn: %s", e)
+                from app.services.ai_pipeline_service import AIPipelineService
+                ai_result = AIPipelineService.run_triage(
+                    db=db,
+                    user_id=sos.user_id,
+                    emergency_description=transcript_text,
+                    sos_id=sos_id,
+                    sos_status=status or "COMPLETED",
+                )
+                sos.ai_emergency_understanding = ai_result.get("emergency_understanding") or sos.ai_emergency_understanding
+                sos.ai_severity = ai_result.get("severity") or sos.ai_severity
+                sos.ai_required_capabilities = ai_result.get("required_medical_capability") or sos.ai_required_capabilities
+                sos.ai_health_summary = ai_result.get("ai_health_summary") or sos.ai_health_summary
+                sos.ai_emergency_report = ai_result.get("emergency_report") or sos.ai_emergency_report
+            except Exception as ai_exc:
+                logger.warning("AI summary generation failed for SOS %s: %s", sos_id, ai_exc)
 
-            return _twiml_say_hangup(closing)
-
-        # Generate AI response
-        ai_text = _generate_ai_response(updated_transcript, speech_result, wallet_ctx, turn)
-        ai_entry = f"AI: {ai_text}"
-        full_transcript = f"{updated_transcript}\n{ai_entry}".strip()
-
-        # Persist transcript update
-        sos.call_transcript = full_transcript
+        sos.call_sid = call_sid or sos.call_sid
+        sos.call_status = status or "COMPLETED"
         db.commit()
 
-        next_turn = turn + 1
-        action_url = f"{WEBHOOK_BASE_URL}/voice/process-turn/{sos_id}?turn={next_turn}"
-        return _twiml_gather_response(ai_text, action_url)
+        logger.info("Saved call results for SOS %s (status=%s, transcript_len=%s)", sos_id, status, len(transcript_text or ""))
+
+        # Dispatch email notifications to patient and emergency contacts
+        try:
+            from app.services.email_service import EmailService
+            EmailService.send_sos_transcript_emails(db, sos_id)
+        except Exception as ex:
+            logger.warning("Email dispatch after call completion failed: %s", ex)
+
+    @staticmethod
+    def get_initial_twiml(db: Session, sos_id: int) -> str:
+        """Backward compatibility stub for legacy telephony clients."""
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">LifeLink AI has upgraded to real-time voice agents. Please check your dashboard.</Say>
+  <Hangup/>
+</Response>"""
+
+    @staticmethod
+    def process_speech_turn(db: Session, sos_id: int, speech_result: str, turn: int) -> str:
+        """Backward compatibility stub."""
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Hangup/>
+</Response>"""
 
     @staticmethod
     def finalize_call(db: Session, sos_id: int, call_sid: str, call_status: str):
-        """
-        Called by Twilio status callback when call ends.
-        Ensures transcript & email are finalized.
-        """
+        """Backward compatibility stub."""
         sos: Optional[SOS] = db.query(SOS).filter(SOS.sos_id == sos_id).first()
-        if not sos:
-            return
-
-        terminal_statuses = {"completed", "failed", "no-answer", "busy", "canceled"}
-        if call_status.lower() not in terminal_statuses:
-            return
-
-        status_map = {
-            "completed": "COMPLETED",
-            "failed": "FAILED",
-            "no-answer": "NO_ANSWER",
-            "busy": "BUSY",
-            "canceled": "CANCELED",
-        }
-        sos.call_status = status_map.get(call_status.lower(), call_status.upper())
-        sos.call_sid = call_sid or sos.call_sid
-
-        # Generate summary if not yet done
-        if not sos.call_summary and sos.call_transcript:
-            sos.call_summary = _generate_call_summary(sos.call_transcript, sos.ai_emergency_report)
-
-        db.commit()
-
-        # Send email if not already sent
-        if not sos.email_sent and sos.call_status == "COMPLETED":
-            try:
-                from app.services.email_service import EmailService
-                EmailService.send_sos_transcript_emails(db, sos_id)
-            except Exception as e:
-                logger.warning("Email dispatch failed in finalize_call: %s", e)
-
-        logger.info("finalize_call | sos=%s call_status=%s email_sent=%s", sos_id, sos.call_status, sos.email_sent)
+        if sos:
+            sos.call_status = call_status.upper()
+            sos.call_sid = call_sid or sos.call_sid
+            db.commit()
 
     @staticmethod
     def simulate_full_call(db: Session, sos_id: int) -> dict:
         """
-        Simulate a full AI call conversation for testing without Twilio credentials.
-        Returns the simulated transcript and email dispatch result.
+        Simulate a full AI emergency voice call without placing a live telephone call.
+        Saves realistic transcript and triggers email dispatch.
         """
         sos: Optional[SOS] = db.query(SOS).filter(SOS.sos_id == sos_id).first()
         if not sos:
             return {"error": f"SOS {sos_id} not found"}
 
-        wallet_ctx = _build_wallet_summary(db, sos.user_id)
+        user_name = sos.patient_name or "Patient"
+        description = sos.description or "Medical emergency triggered."
 
-        # Simulated patient responses based on the SOS description
-        patient_responses = [
-            sos.description or "I need help urgently, something happened.",
-            "I am conscious but in pain. I'm at the location I triggered SOS from.",
-            "Yes, please send help quickly. My family has been notified.",
-        ]
+        simulated_transcript = (
+            f"AI: Hello {user_name}, this is LifeLink Emergency AI. We received your emergency SOS alert and responders are being notified. Can you tell me what happened and how you are feeling right now?\n"
+            f"Patient: {description}\n"
+            f"AI: Understood. Please sit or lie down in a safe position and do not move if you feel sharp pain. Are you breathing normally and is there any bleeding?\n"
+            f"Patient: I am breathing, but I am in severe discomfort. Please send help.\n"
+            f"AI: Help is en route to your exact location right now. Stay calm and stay on the line. We have alerted your emergency contacts."
+        )
 
-        transcript_lines = []
-        transcript_lines.append("AI: Hello, this is LifeLink Emergency AI. We received your SOS. Can you tell me what happened?")
+        simulated_summary = (
+            f"Patient {user_name} triggered an SOS for '{description}'. "
+            "Patient is conscious and breathing with reported discomfort. "
+            "Instructed to remain stationary; emergency responders and contacts have been alerted."
+        )
 
-        for turn, patient_text in enumerate(patient_responses):
-            transcript_lines.append(f"Patient: {patient_text}")
-            if turn >= MAX_TURNS - 1:
-                closing = "Thank you. Responders are on the way. A full transcript will be emailed to you and your emergency contacts."
-                transcript_lines.append(f"AI: {closing}")
-                break
-            ai_resp = _generate_ai_response("\n".join(transcript_lines), patient_text, wallet_ctx, turn)
-            transcript_lines.append(f"AI: {ai_resp}")
-
-        full_transcript = "\n".join(transcript_lines)
-        summary = _generate_call_summary(full_transcript, sos.ai_emergency_report)
-
-        sos.call_transcript = full_transcript
-        sos.call_summary = summary
-        sos.call_status = "COMPLETED"
-        db.commit()
-
-        # Send email
-        email_result = {}
-        try:
-            from app.services.email_service import EmailService
-            email_result = EmailService.send_sos_transcript_emails(db, sos_id)
-        except Exception as e:
-            email_result = {"error": str(e)}
+        call_sid = "sim-bland-" + str(int(time.time()))
+        VoiceService.save_call_results(
+            db,
+            sos_id=sos_id,
+            call_sid=call_sid,
+            status="COMPLETED",
+            transcript=simulated_transcript,
+            summary=simulated_summary,
+        )
 
         return {
-            "simulated": True,
             "sos_id": sos_id,
-            "transcript": full_transcript,
-            "summary": summary,
-            "email_result": email_result,
+            "status": "COMPLETED",
+            "call_sid": call_sid,
+            "transcript": simulated_transcript,
+            "summary": simulated_summary,
         }

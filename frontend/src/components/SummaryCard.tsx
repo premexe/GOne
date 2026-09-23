@@ -87,10 +87,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.03)',
-    shadowColor: '#0B2545',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
+    boxShadow: '0px 4px 10px rgba(11, 37, 69, 0.04)',
     elevation: 2,
   },
   topRow: {
@@ -106,10 +103,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.06)',
     elevation: 2,
   },
   headerRight: {

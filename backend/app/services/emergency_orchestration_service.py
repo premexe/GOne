@@ -79,7 +79,7 @@ class EmergencyOrchestrationService:
                 from app.services.voice_service import VoiceService
                 from app.models.users import User as UserModel
                 _user_obj = db.query(UserModel).filter(UserModel.user_id == user_id).first()
-                patient_phone = sos.patient_phone or (_user_obj.phone_number if _user_obj else "")
+                patient_phone = _user_obj.phone_number if _user_obj else ""
                 if patient_phone:
                     import threading
                     def _call():
@@ -88,9 +88,16 @@ class EmergencyOrchestrationService:
                         from app.database.session import SessionLocal
                         thread_db = SessionLocal()
                         try:
-                            VoiceService.initiate_call(thread_db, sos.sos_id, patient_phone)
+                            logger.info("Orchestration Bland worker started | sos=%s", sos.sos_id)
+                            result = VoiceService.initiate_call(thread_db, sos.sos_id, patient_phone)
+                            logger.info(
+                                "Orchestration Bland worker finished | sos=%s status=%s call_id_present=%s",
+                                sos.sos_id,
+                                result.get("status"),
+                                bool(result.get("call_sid")),
+                            )
                         except Exception as e:
-                            logger.warning("Background call thread error | sos=%s err=%s", sos.sos_id, e)
+                            logger.exception("Orchestration Bland worker failed | sos=%s error=%s", sos.sos_id, e)
                         finally:
                             thread_db.close()
                     t = threading.Thread(target=_call, daemon=True)

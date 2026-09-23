@@ -62,7 +62,7 @@ class SOS(Base):
     ai_emergency_report = Column(Text, nullable=True)          # Full formatted emergency incident report
 
     # ── Real-Time Voice Call & Email Delivery ────────────────────────────────
-    call_sid = Column(String(100), nullable=True)              # Twilio or telephony Call SID
+    call_sid = Column(String(100), nullable=True)              # Bland AI call ID
     call_status = Column(String(50), nullable=True, default="PENDING")  # PENDING, IN_PROGRESS, COMPLETED, FAILED
     call_transcript = Column(Text, nullable=True)              # Full conversation transcript between AI and patient
     call_summary = Column(Text, nullable=True)                 # Key findings from the AI phone call

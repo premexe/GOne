@@ -1,4 +1,5 @@
 node_modules
 .expo
+/frontend/android
 # Environment variables
 .env

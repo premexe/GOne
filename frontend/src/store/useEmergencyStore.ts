@@ -93,7 +93,13 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
           set({ activeRequest: updated });
         }
       } catch (locationError) {
-        console.warn('Could not update SOS with precise location:', locationError);
+        // A second SOS can replace the first one while its high-accuracy GPS
+        // request is still running. Its location update is then correctly
+        // rejected by the server; it is not a failure of the active SOS.
+        const message = locationError instanceof Error ? locationError.message : String(locationError);
+        if (!/no longer active/i.test(message)) {
+          console.warn('Could not update SOS with precise location:', locationError);
+        }
       }
     })();
 

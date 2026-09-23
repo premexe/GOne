@@ -1,16 +1,22 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Modal, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Modal, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import Constants from 'expo-constants';
 import { User, Phone, Plus, Trash2, Edit2, ShieldCheck, Heart, AlertTriangle, Pill, LogOut } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useProfileStore } from '../../src/store/useProfileStore';
+import { useEmergencyStore } from '../../src/store/useEmergencyStore';
+import { request } from '../../src/services/http';
+import { startSpeechRecognition } from '../../src/services/speechRecognition';
+import { createEmergencyAgoraEngine } from '../../src/services/agora';
 
 const profilePhoto = require('../../assets/profile-photo.jpg');
 
 export default function ProfileScreen() {
   const { user, updateUser, logout } = useAuthStore();
   const { profile, updateProfile, addEmergencyContact, removeEmergencyContact } = useProfileStore();
+  const { activeRequest } = useEmergencyStore();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPatientInfoModalOpen, setIsPatientInfoModalOpen] = useState(false);
@@ -25,6 +31,182 @@ export default function ProfileScreen() {
   const [bloodGroup, setBloodGroup] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [isCallLoading, setIsCallLoading] = useState(false);
+  const [showCallPopup, setShowCallPopup] = useState(false);
+  const [voiceQuestions, setVoiceQuestions] = useState<string[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const engineRef = useRef<any>(null);
+  const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
+
+  const completeVoiceFlow = async (transcript: string) => {
+    if (!activeRequest?.id) {
+      Alert.alert('Emergency assistant complete', 'The call ended. No active SOS was linked, so the transcript stayed local to this session.');
+      return;
+    }
+
+    try {
+      await request('/voice/agora-finish', {
+        method: 'POST',
+        body: JSON.stringify({
+          sosId: activeRequest.id,
+          uid: Number(user?.id || Date.now()),
+          transcript,
+          summary: `Emergency AI self-check complete. Transcript captured: ${transcript.slice(0, 240) || 'No transcript captured.'}`,
+        }),
+      });
+      Alert.alert('Emergency assistant complete', 'Your response has been captured and the transcript was submitted for review.');
+    } catch (error) {
+      console.warn('Could not finalize emergency voice transcript:', error);
+      Alert.alert('Transcript saved locally', 'The AI voice conversation ended, but the SOS transcript could not be finalized with the backend.');
+    }
+  };
+
+  const askNextQuestion = async (questions: string[], nextIndex: number) => {
+    if (!questions.length) {
+      setShowCallPopup(false);
+      setIsCallLoading(false);
+      await completeVoiceFlow(voiceTranscript || 'No spoken response recorded.');
+      return;
+    }
+
+    if (nextIndex >= questions.length) {
+      setShowCallPopup(false);
+      setIsCallLoading(false);
+      await completeVoiceFlow(voiceTranscript || 'No spoken response recorded.');
+      return;
+    }
+
+    const nextQuestion = questions[nextIndex];
+    setCurrentQuestionIndex(nextIndex);
+
+    try {
+      const canUseNativeTts = typeof (globalThis as any).speechSynthesis !== 'undefined';
+      if (canUseNativeTts) {
+        (globalThis as any).speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(nextQuestion);
+        utterance.rate = 1;
+        utterance.onend = async () => {
+          const recognition = await startSpeechRecognition({
+            onTranscript: (transcript) => {
+              setVoiceTranscript((prev) => {
+                const nextValue = prev ? `${prev}\n${transcript}` : transcript;
+                return nextValue;
+              });
+            },
+            onEnd: async () => {
+              recognitionRef.current = null;
+              await askNextQuestion(questions, nextIndex + 1);
+            },
+            onError: (message) => {
+              console.warn('Voice capture error:', message);
+              void askNextQuestion(questions, nextIndex + 1);
+            },
+          });
+
+          recognitionRef.current = recognition;
+        };
+        (globalThis as any).speechSynthesis.speak(utterance);
+      } else {
+        const recognition = await startSpeechRecognition({
+          onTranscript: (transcript) => {
+            setVoiceTranscript((prev) => {
+              const nextValue = prev ? `${prev}\n${transcript}` : transcript;
+              return nextValue;
+            });
+          },
+          onEnd: async () => {
+            recognitionRef.current = null;
+            await askNextQuestion(questions, nextIndex + 1);
+          },
+          onError: (message) => {
+            console.warn('Voice capture error:', message);
+            void askNextQuestion(questions, nextIndex + 1);
+          },
+        });
+
+        recognitionRef.current = recognition;
+      }
+    } catch (error) {
+      console.warn('Could not ask emergency voice question:', error);
+      void askNextQuestion(questions, nextIndex + 1);
+    }
+  };
+
+  const handleStartSecureCall = async () => {
+    const isExpoGoBuild = Constants.appOwnership === 'expo';
+
+    if (Platform.OS === 'web' || isExpoGoBuild) {
+      setIsCallLoading(false);
+      setShowCallPopup(false);
+      Alert.alert(
+        'Secure voice call unavailable',
+        'Agora voice calls require a custom native development build. Please run the app with an Expo dev client or native build on iOS/Android.',
+      );
+      return;
+    }
+
+    setIsCallLoading(true);
+    setShowCallPopup(true);
+    setVoiceTranscript('');
+    setVoiceQuestions([]);
+    setCurrentQuestionIndex(0);
+    recognitionRef.current?.abort();
+
+    try {
+      const channelName = `lifelink-call-${user?.id || 'demo'}`;
+      const uid = Number(user?.id || Date.now());
+      const appId = process.env.EXPO_PUBLIC_AGORA_APP_ID;
+
+      if (!appId) {
+        throw new Error('Missing EXPO_PUBLIC_AGORA_APP_ID in frontend/.env');
+      }
+
+      const tokenResponse = await request('/voice/agora-token', {
+        method: 'POST',
+        body: JSON.stringify({ channelName, uid }),
+      });
+
+      if (!tokenResponse?.token) {
+        throw new Error('No Agora token was returned by the backend.');
+      }
+
+      engineRef.current = createEmergencyAgoraEngine({
+        appId,
+        token: tokenResponse.token,
+        channelName,
+        uid,
+      });
+
+      const questionsResponse = await request('/voice/agent-questions', {
+        method: 'POST',
+        body: JSON.stringify({
+          patientName: user?.name || 'Patient',
+          emergencyDescription: profile?.allergies?.join(', ') || 'Emergency check-in',
+        }),
+      });
+
+      const questions = questionsResponse?.questions || [
+        'Can you tell me exactly what happened and how you are feeling right now?',
+        'Are you conscious and breathing normally right now?',
+        'Do you have chest pain, severe bleeding, or trouble speaking or moving?',
+        'Please stay in a safe position and tell me if anyone is with you or if you need immediate help.',
+      ];
+
+      setVoiceQuestions(questions);
+      await askNextQuestion(questions, 0);
+
+      Alert.alert(
+        'AI emergency voice assistant active',
+        'The app has connected to the Agora channel and started the emergency check-in questions.',
+      );
+    } catch (error) {
+      console.error('Error initiating Agora voice call:', error);
+      setShowCallPopup(false);
+      setIsCallLoading(false);
+      Alert.alert('Call Failed', error instanceof Error ? error.message : 'Unable to start the in-app voice call.');
+    }
+  };
 
   const openPatientInfoEditor = () => {
     setFullName(user?.name || '');
@@ -226,6 +408,41 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      <View style={styles.sectionCard}>
+        <View style={styles.sectionHeaderRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Phone size={18} color={COLORS.brand} />
+            <Text style={styles.sectionTitle}>Cybersecurity Assistant</Text>
+          </View>
+        </View>
+
+        <Text style={styles.callDescription}>
+          Our AI cybersecurity expert will call you to provide real-time assistance with your security concerns.
+        </Text>
+
+        <Text style={styles.fieldLabel}>Your Phone Number</Text>
+        <TextInput
+          style={styles.modalInput}
+          placeholder="Add a phone number to your profile"
+          keyboardType="phone-pad"
+          value={phoneNumber}
+          maxLength={10}
+          editable={false}
+        />
+
+        <TouchableOpacity
+          style={[styles.callButton, isCallLoading && styles.callButtonDisabled]}
+          onPress={handleStartSecureCall}
+          disabled={isCallLoading}
+        >
+          {isCallLoading ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <Text style={styles.callButtonText}>Start Secure Call</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
       {/* Emergency Contacts (ICE) */}
       <View style={styles.sectionCard}>
         <View style={styles.sectionHeaderRow}>
@@ -332,6 +549,32 @@ export default function ProfileScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={showCallPopup} transparent animationType="fade">
+        <View style={styles.callModalOverlay}>
+          <View style={styles.callPopupContainer}>
+            <View style={styles.callPopupHeader}>
+              <Phone size={28} color={COLORS.ink} />
+            </View>
+
+            <View style={styles.callPopupContent}>
+              <Text style={styles.callPopupTitle}>Call Initiated</Text>
+              <Text style={styles.callPopupMessage}>
+                You will receive a call shortly. Don’t worry, we are here for you to address all your cybersecurity concerns.
+              </Text>
+
+              <View style={styles.callStatusContainer}>
+                <ActivityIndicator color={COLORS.ink} size="small" style={styles.callStatusIcon} />
+                <Text style={styles.callStatusText}>Connecting to secure line...</Text>
+              </View>
+
+              <TouchableOpacity style={styles.okButton} onPress={() => setShowCallPopup(false)}>
+                <Text style={styles.okButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </ScrollView>
   );
@@ -505,6 +748,99 @@ const styles = StyleSheet.create({
   addContactBadgeText: {
     color: '#FFFFFF',
     fontSize: 11,
+    fontWeight: '700',
+  },
+  callDescription: {
+    fontSize: 13,
+    color: COLORS.muted,
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  callButton: {
+    backgroundColor: COLORS.ink,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  callButtonDisabled: {
+    opacity: 0.7,
+  },
+  callButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  callModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  callPopupContainer: {
+    width: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  callPopupHeader: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(67, 176, 115, 0.12)',
+  },
+  callPopupContent: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  callPopupTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.ink,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  callPopupMessage: {
+    fontSize: 14,
+    color: COLORS.ink,
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  callStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(67, 176, 115, 0.12)',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    marginBottom: 20,
+  },
+  callStatusIcon: {
+    marginRight: 8,
+  },
+  callStatusText: {
+    fontSize: 14,
+    color: COLORS.ink,
+  },
+  okButton: {
+    backgroundColor: COLORS.ink,
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    borderRadius: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  okButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '700',
   },
   contactRow: {

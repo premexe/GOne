@@ -1,10 +1,16 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Animated, StyleSheet, GestureResponderEvent } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, StyleSheet, Platform } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Siren } from 'lucide-react-native';
 import { COLORS } from '../constants/theme';
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+// Strip `collapsable` prop injected by react-native-web Animated before passing to SVG element
+const SvgCircle = React.forwardRef<any, any>(({ collapsable, ...props }, ref) => (
+  <Circle ref={ref} {...props} />
+));
+SvgCircle.displayName = 'SvgCircle';
+
+const AnimatedCircle = Animated.createAnimatedComponent(SvgCircle);
 
 interface SOSButtonProps {
   onConfirmSOS: () => void;
@@ -23,12 +29,12 @@ export const SOSButton: React.FC<SOSButtonProps> = ({ onConfirmSOS, onQuickTap }
         Animated.timing(pulseAnim, {
           toValue: 1.15,
           duration: 1200,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
           duration: 1200,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
       ])
     );
@@ -148,10 +154,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.status.red,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.status.red,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
+    boxShadow: '0px 6px 10px rgba(255, 59, 78, 0.4)',
     elevation: 8,
   },
   svgRing: {

@@ -19,5 +19,5 @@ email-validator
 # G-ONE AI Module - Tier 1 Gemini support (optional; falls back to Ollama/Rules if absent)
 google-genai>=0.3,<1.0
 
-# Real-time AI voice call via Twilio (optional; simulation mode if absent)
-twilio>=9.0
+# In-app audio calls use Agora RTC tokens generated on the backend.
+agora-token-builder>=1.0.0

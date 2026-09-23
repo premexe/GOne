@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Alert, View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
+import { Alert, View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Keyboard } from 'react-native';
 import { Siren, Mic, CheckCircle2, ArrowRight, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
@@ -28,6 +28,7 @@ export default function ProvideInfoScreen() {
 
   const handleStartEmergency = async () => {
     if (isSending) return;
+    Keyboard.dismiss();
     setIsSending(true);
     try {
       await triggerSOS(selectedSymptoms, notes);
@@ -317,10 +318,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    shadowColor: COLORS.status.red,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
+    boxShadow: '0px 6px 10px rgba(255, 59, 78, 0.35)',
     elevation: 6,
   },
   launchButtonSending: {

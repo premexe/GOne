@@ -595,9 +595,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: SPACING.cardRadius,
     padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
+    boxShadow: '0px 0px 6px rgba(0, 0, 0, 0.04)',
     elevation: 2,
   },
   cardCompleted: {

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "LifeLink AI Emergency Health Companion",
   "scripts": {
-    "backend": "cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
-    "frontend": "cd frontend && node --max-old-space-size=4096 ./node_modules/expo/bin/cli start --clear"
+    "backend": ".venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload",
+    "frontend": "cd frontend && node --max-old-space-size=4096 ./node_modules/expo/bin/cli start --clear --offline"
   }
 }

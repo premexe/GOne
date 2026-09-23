@@ -624,7 +624,6 @@ export const api = {
               longitude: userLng,
               description,
               patient_name: currentUser?.name || undefined,
-              patient_phone: currentUser?.phone || undefined,
             }),
           });
         } catch (_sosErr) {
@@ -635,7 +634,6 @@ export const api = {
               latitude: userLat,
               longitude: userLng,
               description,
-              patient_phone: currentUser?.phone || undefined,
             }),
           });
           rawSos = trigResp?.sos || trigResp;

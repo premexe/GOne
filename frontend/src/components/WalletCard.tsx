@@ -97,10 +97,7 @@ const styles = StyleSheet.create({
     borderRadius: SPACING.cardRadius,
     padding: SPACING.padding,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
+    boxShadow: '0px 8px 16px rgba(0, 0, 0, 0.18)',
     elevation: 6,
   },
   headerRow: {
@@ -203,10 +200,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     padding: 8,
     borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
   },
   qrCaption: {
     color: COLORS.muted,

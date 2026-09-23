@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
@@ -10,6 +12,8 @@ from app.repositories.hospital_repository import HospitalRepository
 from app.repositories.ambulance_repository import AmbulanceRepository
 from app.repositories.doctor_repository import DoctorRepository
 from app.schemas.sos import SOSCreate
+
+logger = logging.getLogger(__name__)
 
 
 class SOSService:
@@ -43,7 +47,7 @@ class SOSService:
         # Fetch user info for quick patient display
         user = db.query(User).filter(User.user_id == user_id).first()
         p_name = sos_data.patient_name or (user.full_name if user else f"User #{user_id}")
-        p_phone = sos_data.patient_phone or (user.phone_number if user else "")
+        p_phone = user.phone_number if user else ""
 
         # Create new SOS
         new_sos = SOS(
@@ -63,28 +67,46 @@ class SOSService:
             commit=commit
         )
 
+        logger.info(
+            "SOS created | sos=%s user=%s commit=%s phone_present=%s phone_suffix=%s",
+            created_sos.sos_id,
+            user_id,
+            commit,
+            bool(p_phone),
+            p_phone[-4:] if p_phone else "<none>",
+        )
+
         if commit and p_phone:
             try:
                 import threading
                 from app.services.voice_service import VoiceService
                 from app.database.session import SessionLocal
 
+                logger.info("Bland call queued | sos=%s user=%s", created_sos.sos_id, user_id)
+
                 def _call():
                     thread_db = SessionLocal()
                     try:
-                        VoiceService.initiate_call(thread_db, created_sos.sos_id, p_phone)
-                    except Exception as e:
-                        import logging
-                        logging.getLogger(__name__).warning(
-                            "Voice call trigger error | sos=%s err=%s", created_sos.sos_id, e
+                        logger.info("Bland call worker started | sos=%s", created_sos.sos_id)
+                        result = VoiceService.initiate_call(thread_db, created_sos.sos_id, p_phone)
+                        logger.info(
+                            "Bland call worker finished | sos=%s status=%s call_id_present=%s",
+                            created_sos.sos_id,
+                            result.get("status"),
+                            bool(result.get("call_sid")),
                         )
+                    except Exception as e:
+                        logger.exception("Bland call worker failed | sos=%s error=%s", created_sos.sos_id, e)
                     finally:
                         thread_db.close()
 
                 threading.Thread(target=_call, daemon=True).start()
             except Exception as exc:
-                import logging
-                logging.getLogger(__name__).warning("Failed to start voice call thread: %s", exc)
+                logger.exception("Bland call worker could not start | sos=%s error=%s", created_sos.sos_id, exc)
+        elif not commit:
+            logger.info("Bland call deferred | sos=%s reason=transaction_not_committed", created_sos.sos_id)
+        else:
+            logger.warning("Bland call not queued | sos=%s reason=missing_user_phone", created_sos.sos_id)
 
         return created_sos
 

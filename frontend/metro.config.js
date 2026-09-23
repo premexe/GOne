@@ -10,10 +10,12 @@ config.watchFolders = [projectRoot];
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
 ];
-config.resolver.disableHierarchicalLookup = true;
 
 // Preserve Expo's default package-entry priority. Selecting `module` here
 // causes URL/polyfill packages to load their incompatible ESM entry in Expo Go.
 config.resolver.resolverMainFields = ['react-native', 'browser', 'main'];
+
+// Keep dev bundling within the available memory on Windows.
+config.maxWorkers = 2;
 
 module.exports = config;

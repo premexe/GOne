@@ -206,10 +206,7 @@ const styles = StyleSheet.create({
   },
   toggleBtnActive: {
     backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+    boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.08)',
   },
   searchBar: {
     flexDirection: 'row',
@@ -281,10 +278,7 @@ const styles = StyleSheet.create({
     padding: SPACING.padding,
     borderWidth: 1,
     borderColor: COLORS.border,
-    shadowColor: '#0B2545',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
+    boxShadow: '0px 4px 10px rgba(11, 37, 69, 0.04)',
     elevation: 2,
   },
   topMatchCard: {
