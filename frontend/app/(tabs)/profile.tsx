@@ -39,7 +39,30 @@ export default function ProfileScreen() {
   const engineRef = useRef<any>(null);
   const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (engineRef.current) {
+        try {
+          engineRef.current.leaveChannel?.();
+          engineRef.current.release?.();
+        } catch (_) {}
+        engineRef.current = null;
+      }
+      recognitionRef.current?.abort();
+    };
+  }, []);
+
   const completeVoiceFlow = async (transcript: string) => {
+    if (engineRef.current) {
+      try {
+        engineRef.current.leaveChannel?.();
+        engineRef.current.release?.();
+      } catch (err) {
+        console.warn('Error releasing Agora engine in completeVoiceFlow:', err);
+      }
+      engineRef.current = null;
+    }
+
     if (!activeRequest?.id) {
       Alert.alert('Emergency assistant complete', 'The call ended. No active SOS was linked, so the transcript stayed local to this session.');
       return;
@@ -171,7 +194,7 @@ export default function ProfileScreen() {
         throw new Error('No Agora token was returned by the backend.');
       }
 
-      engineRef.current = createEmergencyAgoraEngine({
+      engineRef.current = await createEmergencyAgoraEngine({
         appId,
         token: tokenResponse.token,
         channelName,
@@ -196,9 +219,12 @@ export default function ProfileScreen() {
       setVoiceQuestions(questions);
       await askNextQuestion(questions, 0);
 
+      const isLiveAgora = engineRef.current?.isNative;
       Alert.alert(
         'AI emergency voice assistant active',
-        'The app has connected to the Agora channel and started the emergency check-in questions.',
+        isLiveAgora
+          ? 'Connected to the secure Agora voice channel. Emergency check-in started.'
+          : 'Emergency check-in is active. Please speak your answers clearly.',
       );
     } catch (error) {
       console.error('Error initiating Agora voice call:', error);
