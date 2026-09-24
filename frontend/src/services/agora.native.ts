@@ -11,6 +11,7 @@ export type EmergencyAgoraEngineHandle = {
   isNative: boolean;
   channelName: string;
   uid: number;
+  setLocalAudioEnabled: (enabled: boolean) => void;
   leaveChannel: () => void | Promise<void>;
   release: () => void | Promise<void>;
 };
@@ -41,6 +42,7 @@ export async function createEmergencyAgoraEngine({
       isNative: false,
       channelName,
       uid,
+      setLocalAudioEnabled: () => {},
       leaveChannel: () => {},
       release: () => {},
     };
@@ -76,6 +78,7 @@ export async function createEmergencyAgoraEngine({
       isNative: false,
       channelName,
       uid,
+      setLocalAudioEnabled: () => {},
       leaveChannel: () => {},
       release: () => {},
     };
@@ -130,6 +133,13 @@ export async function createEmergencyAgoraEngine({
       isNative: true,
       channelName,
       uid,
+      setLocalAudioEnabled: (enabled) => {
+        try {
+          engine.muteLocalAudioStream(!enabled);
+        } catch (error) {
+          console.warn('[Agora] Could not change local microphone state:', error);
+        }
+      },
       leaveChannel: () => {
         try {
           engine.leaveChannel();
@@ -152,6 +162,7 @@ export async function createEmergencyAgoraEngine({
       isNative: false,
       channelName,
       uid,
+      setLocalAudioEnabled: () => {},
       leaveChannel: () => {},
       release: () => {},
     };

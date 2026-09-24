@@ -1,11 +1,14 @@
 type SpeechRecognitionModule = {
   isRecognitionAvailable: () => boolean;
-  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+  requestMicrophonePermissionsAsync: () => Promise<{ granted: boolean }>;
+  androidTriggerOfflineModelDownload?: (options: { locale: string }) => Promise<unknown>;
   start: (options: Record<string, unknown>) => void;
   stop: () => void;
   abort: () => void;
   addListener: (event: string, listener: (event: any) => void) => { remove: () => void };
 };
+
+let offlineModelRequested = false;
 
 // Expo Go does not contain third-party native modules. Loading this lazily
 // keeps every screen usable there, while development/production builds use
@@ -31,7 +34,7 @@ export async function startSpeechRecognition(options: {
   const speechRecognition = getSpeechRecognitionModule();
   if (!speechRecognition?.isRecognitionAvailable()) return null;
 
-  const permission = await speechRecognition.requestPermissionsAsync();
+  const permission = await speechRecognition.requestMicrophonePermissionsAsync();
   if (!permission.granted) {
     options.onError('Microphone permission is required to transcribe a voice note. Allow it in Settings and try again.');
     return null;
@@ -51,11 +54,24 @@ export async function startSpeechRecognition(options: {
     }),
   ];
 
+  // Prefer Android's downloaded on-device model. This avoids the unreliable
+  // network recognizer used by some phones and keeps emergency answers local.
+  // Android 13+ will show its system model-download dialog the first time.
+  if (!offlineModelRequested && speechRecognition.androidTriggerOfflineModelDownload) {
+    offlineModelRequested = true;
+    try {
+      await speechRecognition.androidTriggerOfflineModelDownload({ locale: options.language || 'en-IN' });
+    } catch (error) {
+      console.warn('Could not request Android offline speech model:', error);
+    }
+  }
+
   speechRecognition.start({
     lang: options.language || 'en-IN',
-    continuous: true,
+    continuous: false,
     interimResults: true,
-    addsPunctuation: true,
+    requiresOnDeviceRecognition: true,
+    addsPunctuation: false,
     contextualStrings: ['chest pain', 'breathing difficulty', 'bleeding', 'accident', 'unconscious'],
   });
 

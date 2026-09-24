@@ -36,6 +36,8 @@ export default function ProfileScreen() {
   const [voiceQuestions, setVoiceQuestions] = useState<string[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [callStatus, setCallStatus] = useState('Preparing secure voice connection...');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const engineRef = useRef<any>(null);
   const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
 
@@ -53,6 +55,8 @@ export default function ProfileScreen() {
   }, []);
 
   const completeVoiceFlow = async (transcript: string) => {
+    recognitionRef.current?.abort();
+    recognitionRef.current = null;
     if (engineRef.current) {
       try {
         engineRef.current.leaveChannel?.();
@@ -85,6 +89,22 @@ export default function ProfileScreen() {
     }
   };
 
+  const cancelVoiceFlow = () => {
+    recognitionRef.current?.abort();
+    recognitionRef.current = null;
+    if (engineRef.current) {
+      try {
+        engineRef.current.leaveChannel?.();
+        engineRef.current.release?.();
+      } catch (error) {
+        console.warn('Error releasing Agora engine while cancelling:', error);
+      }
+      engineRef.current = null;
+    }
+    setShowCallPopup(false);
+    setIsCallLoading(false);
+  };
+
   const askNextQuestion = async (questions: string[], nextIndex: number) => {
     if (!questions.length) {
       setShowCallPopup(false);
@@ -102,6 +122,11 @@ export default function ProfileScreen() {
 
     const nextQuestion = questions[nextIndex];
     setCurrentQuestionIndex(nextIndex);
+    setCallStatus(`Listening for your response (${nextIndex + 1} of ${questions.length})...`);
+    setVoiceError(null);
+    // Android only permits one reliable microphone owner at a time. Keep the
+    // Agora channel connected, but release its local microphone for speech-to-text.
+    engineRef.current?.setLocalAudioEnabled?.(false);
 
     try {
       const canUseNativeTts = typeof (globalThis as any).speechSynthesis !== 'undefined';
@@ -110,6 +135,7 @@ export default function ProfileScreen() {
         const utterance = new SpeechSynthesisUtterance(nextQuestion);
         utterance.rate = 1;
         utterance.onend = async () => {
+          let recognitionFailed = false;
           const recognition = await startSpeechRecognition({
             onTranscript: (transcript) => {
               setVoiceTranscript((prev) => {
@@ -119,18 +145,27 @@ export default function ProfileScreen() {
             },
             onEnd: async () => {
               recognitionRef.current = null;
-              await askNextQuestion(questions, nextIndex + 1);
+              if (!recognitionFailed) await askNextQuestion(questions, nextIndex + 1);
             },
             onError: (message) => {
               console.warn('Voice capture error:', message);
-              void askNextQuestion(questions, nextIndex + 1);
+              recognitionFailed = true;
+              recognitionRef.current?.abort();
+              recognitionRef.current = null;
+              setVoiceError(message);
+              setCallStatus('Voice recognition is unavailable on this device/network.');
             },
           });
 
           recognitionRef.current = recognition;
+          if (!recognition) {
+            setVoiceError('Speech recognition is not available in this app build.');
+            setCallStatus('Voice recognition is unavailable on this device.');
+          }
         };
         (globalThis as any).speechSynthesis.speak(utterance);
       } else {
+        let recognitionFailed = false;
         const recognition = await startSpeechRecognition({
           onTranscript: (transcript) => {
             setVoiceTranscript((prev) => {
@@ -140,15 +175,23 @@ export default function ProfileScreen() {
           },
           onEnd: async () => {
             recognitionRef.current = null;
-            await askNextQuestion(questions, nextIndex + 1);
+            if (!recognitionFailed) await askNextQuestion(questions, nextIndex + 1);
           },
           onError: (message) => {
             console.warn('Voice capture error:', message);
-            void askNextQuestion(questions, nextIndex + 1);
+            recognitionFailed = true;
+            recognitionRef.current?.abort();
+            recognitionRef.current = null;
+            setVoiceError(message);
+            setCallStatus('Voice recognition is unavailable on this device/network.');
           },
         });
 
         recognitionRef.current = recognition;
+        if (!recognition) {
+          setVoiceError('Speech recognition is not available in this app build.');
+          setCallStatus('Voice recognition is unavailable on this device.');
+        }
       }
     } catch (error) {
       console.warn('Could not ask emergency voice question:', error);
@@ -174,6 +217,8 @@ export default function ProfileScreen() {
     setVoiceTranscript('');
     setVoiceQuestions([]);
     setCurrentQuestionIndex(0);
+    setCallStatus('Preparing secure voice connection...');
+    setVoiceError(null);
     recognitionRef.current?.abort();
 
     try {
@@ -200,6 +245,7 @@ export default function ProfileScreen() {
         channelName,
         uid,
       });
+      setCallStatus('Secure voice channel connected. Starting emergency check-in...');
 
       const questionsResponse = await request('/voice/agent-questions', {
         method: 'POST',
@@ -585,18 +631,31 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.callPopupContent}>
-              <Text style={styles.callPopupTitle}>Call Initiated</Text>
+              <Text style={styles.callPopupTitle}>Emergency Voice Assistant</Text>
               <Text style={styles.callPopupMessage}>
-                You will receive a call shortly. Don’t worry, we are here for you to address all your cybersecurity concerns.
+                {voiceError
+                  ? 'The secure channel is connected, but Android speech recognition could not start.'
+                  : voiceQuestions[currentQuestionIndex] || 'Connecting you to the emergency check-in assistant.'}
               </Text>
 
               <View style={styles.callStatusContainer}>
-                <ActivityIndicator color={COLORS.ink} size="small" style={styles.callStatusIcon} />
-                <Text style={styles.callStatusText}>Connecting to secure line...</Text>
+                {!voiceError && <ActivityIndicator color={COLORS.ink} size="small" style={styles.callStatusIcon} />}
+                <Text style={styles.callStatusText}>{callStatus}</Text>
               </View>
 
-              <TouchableOpacity style={styles.okButton} onPress={() => setShowCallPopup(false)}>
-                <Text style={styles.okButtonText}>OK</Text>
+              <TouchableOpacity
+                style={styles.okButton}
+                onPress={() => {
+                  if (voiceError) {
+                    setShowCallPopup(false);
+                    setIsCallLoading(false);
+                    void completeVoiceFlow(voiceTranscript || 'Voice recognition unavailable; no spoken response captured.');
+                    return;
+                  }
+                  cancelVoiceFlow();
+                }}
+              >
+                <Text style={styles.okButtonText}>{voiceError ? 'CONTINUE WITHOUT VOICE' : 'END CALL'}</Text>
               </TouchableOpacity>
             </View>
           </View>
