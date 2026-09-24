@@ -33,7 +33,9 @@ export function getToken() {
 export async function request(path: string, options: RequestInit = {}) {
   const isFormData = options.body instanceof FormData;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  // Render can take longer than 15 seconds to wake a cold instance. Keep SOS
+  // delivery resilient without leaving requests open indefinitely.
+  const timeout = setTimeout(() => controller.abort(), 30000);
   
   const headers: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -53,7 +55,7 @@ export async function request(path: string, options: RequestInit = {}) {
     });
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error('Cannot reach the LifeLink API. Check that the backend is running and that your phone is on the same Wi-Fi.');
+      throw new Error('Cannot reach the LifeLink API. Check your internet connection and confirm the LifeLink backend is online.');
     }
     throw error;
   } finally {

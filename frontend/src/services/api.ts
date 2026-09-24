@@ -86,6 +86,8 @@ type BackendSOS = {
   ai_severity?: string | null;
   ai_health_summary?: string | null;
   ai_emergency_report?: string | null;
+  call_transcript?: string | null;
+  call_summary?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   created_at: string;
@@ -130,6 +132,8 @@ export type AdminSOSAlert = {
   severity?: string;
   healthSummary?: string;
   emergencyReport?: string;
+  callTranscript?: string;
+  callSummary?: string;
   latitude?: number;
   longitude?: number;
   status: string;
@@ -533,6 +537,8 @@ export const api = {
       severity: sos.ai_severity || undefined,
       healthSummary: sos.ai_health_summary || undefined,
       emergencyReport: sos.ai_emergency_report || undefined,
+      callTranscript: sos.call_transcript || undefined,
+      callSummary: sos.call_summary || undefined,
       latitude: sos.latitude ?? undefined,
       longitude: sos.longitude ?? undefined,
       status: sos.status,
@@ -574,6 +580,8 @@ export const api = {
       severity: sos.ai_severity || undefined,
       healthSummary: sos.ai_health_summary || undefined,
       emergencyReport: sos.ai_emergency_report || undefined,
+      callTranscript: sos.call_transcript || undefined,
+      callSummary: sos.call_summary || undefined,
       latitude: sos.latitude ?? undefined,
       longitude: sos.longitude ?? undefined,
       status: sos.status,

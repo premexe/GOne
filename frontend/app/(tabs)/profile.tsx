@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Modal, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import Constants from 'expo-constants';
+import * as Speech from 'expo-speech';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, Phone, Plus, Trash2, Edit2, ShieldCheck, Heart, AlertTriangle, Pill, LogOut } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
@@ -40,9 +42,11 @@ export default function ProfileScreen() {
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const engineRef = useRef<any>(null);
   const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
+  const voiceSessionRef = useRef(false);
 
   useEffect(() => {
     return () => {
+      Speech.stop();
       if (engineRef.current) {
         try {
           engineRef.current.leaveChannel?.();
@@ -55,6 +59,8 @@ export default function ProfileScreen() {
   }, []);
 
   const completeVoiceFlow = async (transcript: string) => {
+    voiceSessionRef.current = false;
+    Speech.stop();
     recognitionRef.current?.abort();
     recognitionRef.current = null;
     if (engineRef.current) {
@@ -70,6 +76,12 @@ export default function ProfileScreen() {
     if (!activeRequest?.id) {
       Alert.alert('Emergency assistant complete', 'The call ended. No active SOS was linked, so the transcript stayed local to this session.');
       return;
+    }
+
+    try {
+      await AsyncStorage.setItem(`lifelink_voice_transcript_${activeRequest.id}`, transcript);
+    } catch (error) {
+      console.warn('Could not save the voice transcript on this device:', error);
     }
 
     try {
@@ -90,6 +102,8 @@ export default function ProfileScreen() {
   };
 
   const cancelVoiceFlow = () => {
+    voiceSessionRef.current = false;
+    Speech.stop();
     recognitionRef.current?.abort();
     recognitionRef.current = null;
     if (engineRef.current) {
@@ -122,54 +136,20 @@ export default function ProfileScreen() {
 
     const nextQuestion = questions[nextIndex];
     setCurrentQuestionIndex(nextIndex);
+    setVoiceTranscript((previous) => `${previous ? `${previous}\n` : ''}AI: ${nextQuestion}`);
     setCallStatus(`Listening for your response (${nextIndex + 1} of ${questions.length})...`);
     setVoiceError(null);
     // Android only permits one reliable microphone owner at a time. Keep the
     // Agora channel connected, but release its local microphone for speech-to-text.
     engineRef.current?.setLocalAudioEnabled?.(false);
 
-    try {
-      const canUseNativeTts = typeof (globalThis as any).speechSynthesis !== 'undefined';
-      if (canUseNativeTts) {
-        (globalThis as any).speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(nextQuestion);
-        utterance.rate = 1;
-        utterance.onend = async () => {
-          let recognitionFailed = false;
-          const recognition = await startSpeechRecognition({
-            onTranscript: (transcript) => {
-              setVoiceTranscript((prev) => {
-                const nextValue = prev ? `${prev}\n${transcript}` : transcript;
-                return nextValue;
-              });
-            },
-            onEnd: async () => {
-              recognitionRef.current = null;
-              if (!recognitionFailed) await askNextQuestion(questions, nextIndex + 1);
-            },
-            onError: (message) => {
-              console.warn('Voice capture error:', message);
-              recognitionFailed = true;
-              recognitionRef.current?.abort();
-              recognitionRef.current = null;
-              setVoiceError(message);
-              setCallStatus('Voice recognition is unavailable on this device/network.');
-            },
-          });
-
-          recognitionRef.current = recognition;
-          if (!recognition) {
-            setVoiceError('Speech recognition is not available in this app build.');
-            setCallStatus('Voice recognition is unavailable on this device.');
-          }
-        };
-        (globalThis as any).speechSynthesis.speak(utterance);
-      } else {
+    const startListening = async () => {
+      try {
         let recognitionFailed = false;
         const recognition = await startSpeechRecognition({
           onTranscript: (transcript) => {
             setVoiceTranscript((prev) => {
-              const nextValue = prev ? `${prev}\n${transcript}` : transcript;
+              const nextValue = `${prev ? `${prev}\n` : ''}Patient: ${transcript}`;
               return nextValue;
             });
           },
@@ -188,18 +168,29 @@ export default function ProfileScreen() {
         });
 
         recognitionRef.current = recognition;
-        if (!recognition) {
-          setVoiceError('Speech recognition is not available in this app build.');
-          setCallStatus('Voice recognition is unavailable on this device.');
-        }
+      } catch (error) {
+        console.warn('Could not start voice recognition:', error);
+        setVoiceError('Could not start Android speech recognition.');
+        setCallStatus('Voice recognition could not start on this device.');
       }
+    };
+
+    try {
+      Speech.stop();
+      Speech.speak(nextQuestion, {
+        language: 'en-US',
+        rate: 0.9,
+        onDone: () => { void startListening(); },
+        onError: () => { void startListening(); },
+      });
     } catch (error) {
-      console.warn('Could not ask emergency voice question:', error);
-      void askNextQuestion(questions, nextIndex + 1);
+      console.warn('Could not speak emergency question:', error);
+      void startListening();
     }
   };
 
   const handleStartSecureCall = async () => {
+    if (voiceSessionRef.current) return;
     const isExpoGoBuild = Constants.appOwnership === 'expo';
 
     if (Platform.OS === 'web' || isExpoGoBuild) {
@@ -212,6 +203,7 @@ export default function ProfileScreen() {
       return;
     }
 
+    voiceSessionRef.current = true;
     setIsCallLoading(true);
     setShowCallPopup(true);
     setVoiceTranscript('');
@@ -274,6 +266,7 @@ export default function ProfileScreen() {
       );
     } catch (error) {
       console.error('Error initiating Agora voice call:', error);
+      voiceSessionRef.current = false;
       setShowCallPopup(false);
       setIsCallLoading(false);
       Alert.alert('Call Failed', error instanceof Error ? error.message : 'Unable to start the in-app voice call.');

@@ -53,3 +53,9 @@ def root():
     return {
         "message": "LifeLink AI Backend Running Successfully"
     }
+
+
+@app.get("/health")
+def health():
+    """Lightweight readiness probe for the mobile app and deployment checks."""
+    return {"status": "ok"}

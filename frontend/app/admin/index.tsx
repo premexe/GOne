@@ -325,6 +325,13 @@ function SOSAdminCard({
         </Text>
       </View>
 
+      {alert.callTranscript ? (
+        <View style={styles.transcriptBox}>
+          <Text style={styles.healthHeader}>AI VOICE INTERVIEW TRANSCRIPT</Text>
+          <Text style={styles.healthText}>{alert.callTranscript}</Text>
+        </View>
+      ) : null}
+
       {/* Location */}
       <View style={styles.locationRow}>
         <MapPin size={16} color={COLORS.brand} />
@@ -670,6 +677,14 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#BBF7D0',
+  },
+  transcriptBox: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
   healthHeader: {
     color: COLORS.muted,

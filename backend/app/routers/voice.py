@@ -15,7 +15,7 @@ import re
 import time
 
 import requests
-from fastapi import APIRouter, Body, Depends, Request, Form, Query, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Request, Form, Query, HTTPException, status
 from fastapi.responses import Response, JSONResponse
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -25,7 +25,7 @@ try:
 except ImportError:  # pragma: no cover - package may be installed later
     RtcTokenBuilder = None
 
-from app.database.session import get_db
+from app.database.session import SessionLocal, get_db
 from app.services.voice_service import VoiceService
 from app.services.email_service import EmailService
 from app.models.sos import SOS
@@ -35,6 +35,27 @@ router = APIRouter(
     prefix="/voice",
     tags=["Voice Call"]
 )
+
+
+def _save_agora_results_in_background(
+    sos_id: int,
+    uid: int,
+    transcript: str,
+    summary: str,
+) -> None:
+    """Keep slow AI/email work out of the phone's finalization request."""
+    db = SessionLocal()
+    try:
+        VoiceService.save_call_results(
+            db,
+            sos_id=sos_id,
+            call_sid=f"agora-{sos_id}-{uid}",
+            status="COMPLETED",
+            transcript=transcript,
+            summary=summary,
+        )
+    finally:
+        db.close()
 
 
 @router.post(
@@ -158,10 +179,12 @@ async def get_agent_questions(
     summary="Finalize the in-app AI voice session by saving the transcript and dispatching email"
 )
 async def finish_agora_session(
+    background_tasks: BackgroundTasks,
     payload: dict = Body(...),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    """Accept transcript data from the app and persist it to the SOS record."""
+    """Acknowledge immediately; persist transcript and send email in background."""
     sos_id = payload.get("sosId")
     transcript = payload.get("transcript") or ""
     summary = payload.get("summary") or "No summary provided."
@@ -169,13 +192,18 @@ async def finish_agora_session(
     if sos_id is None:
         raise HTTPException(status_code=400, detail="sosId is required.")
 
-    VoiceService.save_call_results(
-        db,
-        sos_id=int(sos_id),
-        call_sid=f"agora-{int(sos_id)}-{int(payload.get('uid') or 0)}",
-        status="COMPLETED",
-        transcript=str(transcript),
-        summary=str(summary),
+    sos = db.query(SOS).filter(SOS.sos_id == int(sos_id)).first()
+    if not sos:
+        raise HTTPException(status_code=404, detail="SOS not found.")
+    if sos.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="You may only save transcripts for your own SOS.")
+
+    background_tasks.add_task(
+        _save_agora_results_in_background,
+        int(sos_id),
+        int(payload.get('uid') or 0),
+        str(transcript),
+        str(summary),
     )
 
     return {
