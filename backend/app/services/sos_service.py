@@ -7,6 +7,8 @@ from sqlalchemy.sql import func
 from app.models.sos import SOS
 from app.models.sos_rejection import SOSRejection
 from app.models.users import User
+from app.models.emergency_wallet import EmergencyWallet
+from app.models.medical_record import MedicalRecord
 from app.repositories.sos_repository import SOSRepository
 from app.repositories.hospital_repository import HospitalRepository
 from app.repositories.ambulance_repository import AmbulanceRepository
@@ -17,6 +19,45 @@ logger = logging.getLogger(__name__)
 
 
 class SOSService:
+
+    @staticmethod
+    def _build_patient_context(db: Session, user_id: int) -> str:
+        """Create an immediately available, clinician-readable SOS context.
+
+        The full AI pipeline may finish after the SOS is created. This snapshot
+        ensures the dispatch dashboard still has the patient's wallet and
+        uploaded-record context during the first seconds of a critical alert.
+        """
+        wallet = db.query(EmergencyWallet).filter(EmergencyWallet.user_id == user_id).first()
+        records = (
+            db.query(MedicalRecord)
+            .filter(MedicalRecord.user_id == user_id)
+            .order_by(MedicalRecord.created_at.desc())
+            .limit(5)
+            .all()
+        )
+
+        sections: list[str] = []
+        if wallet:
+            for label, value in (
+                ("Blood group", wallet.blood_group),
+                ("Known conditions", wallet.chronic_conditions),
+                ("Allergies", wallet.allergies),
+                ("Current medications", wallet.current_medications),
+                ("Emergency profile notes", wallet.emergency_notes),
+            ):
+                if value and value.strip():
+                    sections.append(f"{label}: {value.strip()}")
+
+        if records:
+            record_details = []
+            for record in records:
+                extracted = (record.ai_summary or record.ocr_text or "").strip()
+                excerpt = f" — {extracted[:500]}" if extracted else ""
+                record_details.append(f"{record.title} ({record.record_type}){excerpt}")
+            sections.append("Uploaded medical records: " + " | ".join(record_details))
+
+        return "\n".join(sections) or "No emergency wallet or uploaded medical-record context is available."
 
     @staticmethod
     def _release_resources(db: Session, sos: SOS) -> None:
@@ -48,6 +89,7 @@ class SOSService:
         user = db.query(User).filter(User.user_id == user_id).first()
         p_name = sos_data.patient_name or (user.full_name if user else f"User #{user_id}")
         p_phone = user.phone_number if user else ""
+        patient_context = SOSService._build_patient_context(db, user_id)
 
         # Create new SOS
         new_sos = SOS(
@@ -57,6 +99,7 @@ class SOSService:
             longitude=sos_data.longitude,
             patient_name=p_name,
             patient_phone=p_phone,
+            ai_health_summary=patient_context,
             status="ACTIVE",
             dispatch_status="RECEIVED"
         )

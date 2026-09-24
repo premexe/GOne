@@ -82,6 +82,10 @@ type BackendSOS = {
   assigned_doctor_id?: number | null;
   patient_name?: string | null;
   patient_phone?: string | null;
+  ai_emergency_understanding?: string | null;
+  ai_severity?: string | null;
+  ai_health_summary?: string | null;
+  ai_emergency_report?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   created_at: string;
@@ -122,6 +126,10 @@ export type AdminSOSAlert = {
   patientName: string;
   patientPhone?: string;
   description?: string;
+  emergencyUnderstanding?: string;
+  severity?: string;
+  healthSummary?: string;
+  emergencyReport?: string;
   latitude?: number;
   longitude?: number;
   status: string;
@@ -521,6 +529,10 @@ export const api = {
       patientName: sos.patient_name || `Patient #${sos.user_id}`,
       patientPhone: sos.patient_phone || undefined,
       description: sos.description || undefined,
+      emergencyUnderstanding: sos.ai_emergency_understanding || undefined,
+      severity: sos.ai_severity || undefined,
+      healthSummary: sos.ai_health_summary || undefined,
+      emergencyReport: sos.ai_emergency_report || undefined,
       latitude: sos.latitude ?? undefined,
       longitude: sos.longitude ?? undefined,
       status: sos.status,
@@ -558,6 +570,10 @@ export const api = {
       patientName: sos.patient_name || `Patient #${sos.user_id}`,
       patientPhone: sos.patient_phone || undefined,
       description: sos.description || undefined,
+      emergencyUnderstanding: sos.ai_emergency_understanding || undefined,
+      severity: sos.ai_severity || undefined,
+      healthSummary: sos.ai_health_summary || undefined,
+      emergencyReport: sos.ai_emergency_report || undefined,
       latitude: sos.latitude ?? undefined,
       longitude: sos.longitude ?? undefined,
       status: sos.status,

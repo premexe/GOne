@@ -308,6 +308,23 @@ function SOSAdminCard({
         {alert.description || 'Immediate emergency signal triggered.'}
       </Text>
 
+      {alert.emergencyUnderstanding || alert.severity ? (
+        <View style={styles.triageBox}>
+          <Text style={styles.healthHeader}>AI TRIAGE</Text>
+          {alert.severity ? <Text style={styles.severity}>SEVERITY: {alert.severity}</Text> : null}
+          {alert.emergencyUnderstanding ? (
+            <Text style={styles.healthText}>{alert.emergencyUnderstanding}</Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      <View style={styles.healthBox}>
+        <Text style={styles.healthHeader}>PATIENT EMERGENCY PROFILE</Text>
+        <Text style={styles.healthText}>
+          {alert.healthSummary || 'No emergency wallet or uploaded medical-record context is available.'}
+        </Text>
+      </View>
+
       {/* Location */}
       <View style={styles.locationRow}>
         <MapPin size={16} color={COLORS.brand} />
@@ -638,6 +655,40 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   note: { color: COLORS.ink, fontSize: 13, lineHeight: 18, marginTop: 3 },
+  triageBox: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  healthBox: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  healthHeader: {
+    color: COLORS.muted,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 5,
+  },
+  healthText: {
+    color: COLORS.ink,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  severity: {
+    color: '#C2410C',
+    fontSize: 11,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
   locationRow: {
     flexDirection: 'row',
     gap: 6,
