@@ -6,10 +6,13 @@ import { COLORS, SPACING } from '../../src/constants/theme';
 import { TimelineStepper, StepItem } from '../../src/components/TimelineStepper';
 import { useEmergencyStore } from '../../src/store/useEmergencyStore';
 import { useProfileStore } from '../../src/store/useProfileStore';
+import { useAuthStore } from '../../src/store/useAuthStore';
+import { EmergencyVoiceCall } from '../../src/components/EmergencyVoiceCall';
 
 export default function EmergencyModeScreen() {
   const { activeRequest, isEmergencyActive, endEmergency } = useEmergencyStore();
   const profile = useProfileStore((s) => s.profile);
+  const user = useAuthStore((s) => s.user);
 
   // Guard: if no active SOS, go back to home
   if (!isEmergencyActive || !activeRequest) {
@@ -123,6 +126,12 @@ export default function EmergencyModeScreen() {
         <View style={styles.stepperContainer}>
           <TimelineStepper steps={steps} isDark={true} />
         </View>
+
+        <EmergencyVoiceCall
+          sosId={activeRequest.id}
+          patientName={user?.name || 'Patient'}
+          emergencyDescription={[activeRequest.notes, ...(activeRequest.symptoms || []), ...(profile?.allergies || [])].filter(Boolean).join(', ') || 'Emergency check-in'}
+        />
 
         {rejectedHospitals.length > 0 && (
           <View style={styles.rejectionCard}>

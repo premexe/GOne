@@ -215,7 +215,7 @@ INDICATOR_DEFINITIONS: List[IndicatorDefinition] = [
         category=EmergencyCategory.BURN_INJURY,
         severity=SeverityLevel.CRITICAL,
         patterns=(
-            r"\bextensive burns\b",
+            r"\bextensive (?:fire )?burns\b",
             r"\bburns on the face.*breathing\b",
             r"\bbreathing.*burns on the face\b",
             r"\bburns in a fire\b",

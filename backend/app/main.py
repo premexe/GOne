@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from app.database.connection import engine
 from app.database.base import Base
@@ -21,6 +23,8 @@ from app.routers.ambulances import router as ambulances_router
 from app.routers.voice import router as voice_router
 
 app = FastAPI(title="LifeLink AI API")
+Path("uploads/profile-photos").mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,

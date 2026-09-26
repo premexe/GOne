@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Modal, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import Constants from 'expo-constants';
 import * as Speech from 'expo-speech';
+import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User, Phone, Plus, Trash2, Edit2, ShieldCheck, Heart, AlertTriangle, Pill, LogOut } from 'lucide-react-native';
+import { User, Phone, Plus, Trash2, Edit2, ShieldCheck, Heart, AlertTriangle, Pill, LogOut, Camera } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
 import { useAuthStore } from '../../src/store/useAuthStore';
@@ -11,7 +11,6 @@ import { useProfileStore } from '../../src/store/useProfileStore';
 import { useEmergencyStore } from '../../src/store/useEmergencyStore';
 import { request } from '../../src/services/http';
 import { startSpeechRecognition } from '../../src/services/speechRecognition';
-import { createEmergencyAgoraEngine } from '../../src/services/agora';
 
 const profilePhoto = require('../../assets/profile-photo.jpg');
 
@@ -40,20 +39,12 @@ export default function ProfileScreen() {
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [callStatus, setCallStatus] = useState('Preparing secure voice connection...');
   const [voiceError, setVoiceError] = useState<string | null>(null);
-  const engineRef = useRef<any>(null);
   const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceSessionRef = useRef(false);
 
   useEffect(() => {
     return () => {
       Speech.stop();
-      if (engineRef.current) {
-        try {
-          engineRef.current.leaveChannel?.();
-          engineRef.current.release?.();
-        } catch (_) {}
-        engineRef.current = null;
-      }
       recognitionRef.current?.abort();
     };
   }, []);
@@ -63,16 +54,6 @@ export default function ProfileScreen() {
     Speech.stop();
     recognitionRef.current?.abort();
     recognitionRef.current = null;
-    if (engineRef.current) {
-      try {
-        engineRef.current.leaveChannel?.();
-        engineRef.current.release?.();
-      } catch (err) {
-        console.warn('Error releasing Agora engine in completeVoiceFlow:', err);
-      }
-      engineRef.current = null;
-    }
-
     if (!activeRequest?.id) {
       Alert.alert('Emergency assistant complete', 'The call ended. No active SOS was linked, so the transcript stayed local to this session.');
       return;
@@ -106,15 +87,6 @@ export default function ProfileScreen() {
     Speech.stop();
     recognitionRef.current?.abort();
     recognitionRef.current = null;
-    if (engineRef.current) {
-      try {
-        engineRef.current.leaveChannel?.();
-        engineRef.current.release?.();
-      } catch (error) {
-        console.warn('Error releasing Agora engine while cancelling:', error);
-      }
-      engineRef.current = null;
-    }
     setShowCallPopup(false);
     setIsCallLoading(false);
   };
@@ -137,11 +109,8 @@ export default function ProfileScreen() {
     const nextQuestion = questions[nextIndex];
     setCurrentQuestionIndex(nextIndex);
     setVoiceTranscript((previous) => `${previous ? `${previous}\n` : ''}AI: ${nextQuestion}`);
-    setCallStatus(`Listening for your response (${nextIndex + 1} of ${questions.length})...`);
+    setCallStatus(`Asking question ${nextIndex + 1} of ${questions.length}...`);
     setVoiceError(null);
-    // Android only permits one reliable microphone owner at a time. Keep the
-    // Agora channel connected, but release its local microphone for speech-to-text.
-    engineRef.current?.setLocalAudioEnabled?.(false);
 
     const startListening = async () => {
       try {
@@ -167,10 +136,17 @@ export default function ProfileScreen() {
           },
         });
 
+        if (!recognition) {
+          setVoiceError('Speech recognition is not available in this browser or on this device. Use Chrome or Edge on web, or enable the device speech service.');
+          setCallStatus('Voice recognition is unavailable on this device.');
+          return;
+        }
+
         recognitionRef.current = recognition;
+        setCallStatus(`Listening for your response (${nextIndex + 1} of ${questions.length})...`);
       } catch (error) {
         console.warn('Could not start voice recognition:', error);
-        setVoiceError('Could not start Android speech recognition.');
+        setVoiceError('Could not start speech recognition.');
         setCallStatus('Voice recognition could not start on this device.');
       }
     };
@@ -191,54 +167,17 @@ export default function ProfileScreen() {
 
   const handleStartSecureCall = async () => {
     if (voiceSessionRef.current) return;
-    const isExpoGoBuild = Constants.appOwnership === 'expo';
-
-    if (Platform.OS === 'web' || isExpoGoBuild) {
-      setIsCallLoading(false);
-      setShowCallPopup(false);
-      Alert.alert(
-        'Secure voice call unavailable',
-        'Agora voice calls require a custom native development build. Please run the app with an Expo dev client or native build on iOS/Android.',
-      );
-      return;
-    }
-
     voiceSessionRef.current = true;
     setIsCallLoading(true);
     setShowCallPopup(true);
     setVoiceTranscript('');
     setVoiceQuestions([]);
     setCurrentQuestionIndex(0);
-    setCallStatus('Preparing secure voice connection...');
+    setCallStatus('Preparing emergency check-in...');
     setVoiceError(null);
     recognitionRef.current?.abort();
 
     try {
-      const channelName = `lifelink-call-${user?.id || 'demo'}`;
-      const uid = Number(user?.id || Date.now());
-      const appId = process.env.EXPO_PUBLIC_AGORA_APP_ID;
-
-      if (!appId) {
-        throw new Error('Missing EXPO_PUBLIC_AGORA_APP_ID in frontend/.env');
-      }
-
-      const tokenResponse = await request('/voice/agora-token', {
-        method: 'POST',
-        body: JSON.stringify({ channelName, uid }),
-      });
-
-      if (!tokenResponse?.token) {
-        throw new Error('No Agora token was returned by the backend.');
-      }
-
-      engineRef.current = await createEmergencyAgoraEngine({
-        appId,
-        token: tokenResponse.token,
-        channelName,
-        uid,
-      });
-      setCallStatus('Secure voice channel connected. Starting emergency check-in...');
-
       const questionsResponse = await request('/voice/agent-questions', {
         method: 'POST',
         body: JSON.stringify({
@@ -256,13 +195,9 @@ export default function ProfileScreen() {
 
       setVoiceQuestions(questions);
       await askNextQuestion(questions, 0);
-
-      const isLiveAgora = engineRef.current?.isNative;
       Alert.alert(
         'AI emergency voice assistant active',
-        isLiveAgora
-          ? 'Connected to the secure Agora voice channel. Emergency check-in started.'
-          : 'Emergency check-in is active. Please speak your answers clearly.',
+        'Emergency check-in is active. Please speak your answers clearly.',
       );
     } catch (error) {
       console.error('Error initiating Agora voice call:', error);
@@ -295,6 +230,20 @@ export default function ProfileScreen() {
     });
     if (profile) await updateProfile({ bloodGroup: bloodGroup.trim() });
     setIsPatientInfoModalOpen(false);
+  };
+
+  const handleProfilePhoto = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+    if (result.canceled || !result.assets[0]) return;
+    try {
+      const asset = result.assets[0];
+      await updateUser({ avatarUrl: asset.uri });
+      const { api } = await import('../../src/services/api');
+      const saved = await api.uploadProfilePhoto({ uri: asset.uri, name: asset.fileName || 'profile-photo.jpg', mimeType: asset.mimeType || 'image/jpeg' });
+      await updateUser({ avatarUrl: saved.avatarUrl });
+    } catch (error) {
+      Alert.alert('Photo upload failed', error instanceof Error ? error.message : 'Please try another image.');
+    }
   };
 
   const handleAddContact = async () => {
@@ -367,6 +316,7 @@ export default function ProfileScreen() {
               style={styles.profileAvatar}
               accessibilityLabel="Profile photo"
             />
+            <TouchableOpacity onPress={handleProfilePhoto} style={styles.photoButton} accessibilityLabel="Upload profile photo"><Camera size={14} color="#FFFFFF" /></TouchableOpacity>
             <Text style={styles.sectionTitle}>Basic Patient Info</Text>
           </View>
           <TouchableOpacity
@@ -471,41 +421,6 @@ export default function ProfileScreen() {
             <Plus size={16} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-      </View>
-
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeaderRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Phone size={18} color={COLORS.brand} />
-            <Text style={styles.sectionTitle}>Cybersecurity Assistant</Text>
-          </View>
-        </View>
-
-        <Text style={styles.callDescription}>
-          Our AI cybersecurity expert will call you to provide real-time assistance with your security concerns.
-        </Text>
-
-        <Text style={styles.fieldLabel}>Your Phone Number</Text>
-        <TextInput
-          style={styles.modalInput}
-          placeholder="Add a phone number to your profile"
-          keyboardType="phone-pad"
-          value={phoneNumber}
-          maxLength={10}
-          editable={false}
-        />
-
-        <TouchableOpacity
-          style={[styles.callButton, isCallLoading && styles.callButtonDisabled]}
-          onPress={handleStartSecureCall}
-          disabled={isCallLoading}
-        >
-          {isCallLoading ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
-          ) : (
-            <Text style={styles.callButtonText}>Start Secure Call</Text>
-          )}
-        </TouchableOpacity>
       </View>
 
       {/* Emergency Contacts (ICE) */}
@@ -627,7 +542,7 @@ export default function ProfileScreen() {
               <Text style={styles.callPopupTitle}>Emergency Voice Assistant</Text>
               <Text style={styles.callPopupMessage}>
                 {voiceError
-                  ? 'The secure channel is connected, but Android speech recognition could not start.'
+                  ? 'The assistant could not start speech recognition on this device.'
                   : voiceQuestions[currentQuestionIndex] || 'Connecting you to the emergency check-in assistant.'}
               </Text>
 
@@ -711,6 +626,7 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     backgroundColor: COLORS.surface,
   },
+  photoButton: { width: 26, height: 26, borderRadius: 13, backgroundColor: COLORS.brand, alignItems: 'center', justifyContent: 'center', marginLeft: -18, marginTop: 28, borderWidth: 2, borderColor: '#FFFFFF' },
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -863,10 +779,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    boxShadow: '0px 2px 3.84px rgba(0, 0, 0, 0.25)',
   },
   callPopupHeader: {
     padding: 20,

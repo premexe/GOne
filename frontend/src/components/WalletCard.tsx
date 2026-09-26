@@ -4,6 +4,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { ShieldCheck, AlertTriangle, Phone, Droplet } from 'lucide-react-native';
 import { COLORS, TYPOGRAPHY, SPACING } from '../constants/theme';
 import { User, EmergencyProfile } from '../types';
+import { API_URL } from '../services/http';
 
 interface WalletCardProps {
   user: User;
@@ -12,13 +13,7 @@ interface WalletCardProps {
 
 export const WalletCard: React.FC<WalletCardProps> = ({ user, profile }) => {
   // Generate JSON payload for emergency responders to scan
-  const qrData = JSON.stringify({
-    name: user.name,
-    bloodGroup: user.bloodGroup,
-    allergies: profile.allergies,
-    contacts: profile.emergencyContacts.map((c) => ({ n: c.name, p: c.phone })),
-    updatedAt: new Date().toISOString().split('T')[0],
-  });
+  const qrData = `${API_URL}/wallet/public/${encodeURIComponent(user.id)}`;
 
   return (
     <View style={styles.card}>
@@ -77,7 +72,7 @@ export const WalletCard: React.FC<WalletCardProps> = ({ user, profile }) => {
           <View style={styles.qrBox}>
             <QRCode value={qrData} size={90} backgroundColor="#FFFFFF" color="#0B2545" />
           </View>
-          <Text style={styles.qrCaption}>Scan for Medical Info</Text>
+          <Text style={styles.qrCaption}>Scan to open emergency medical info</Text>
         </View>
       </View>
 

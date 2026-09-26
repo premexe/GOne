@@ -19,6 +19,9 @@ def _resolve_dataset_path(provided_path: str) -> str:
         Path(provided_path),
         Path(__file__).resolve().parents[3] / provided_path,  # from gone_ai_module
         Path(__file__).resolve().parents[4] / provided_path,  # from D:\GONE
+        # The checked-in prototype dataset currently lives alongside the
+        # duplicated module snapshot at the backend root.
+        Path(__file__).resolve().parents[4] / "gone_ai_module_repo" / provided_path,
     ]
     for p in candidate_paths:
         if p.is_file():

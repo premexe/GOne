@@ -4,7 +4,6 @@ import { TrendingUp, CheckCircle2, AlertCircle, ChevronRight } from 'lucide-reac
 import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
 import { DetailHeader } from '../../src/components/DetailHeader';
-import { TrendChart } from '../../src/components/TrendChart';
 import { useProfileStore } from '../../src/store/useProfileStore';
 import { useRecordStore } from '../../src/store/useRecordStore';
 
@@ -14,15 +13,6 @@ export default function ReadinessDetailScreen() {
   const [selectedRange, setSelectedRange] = useState('W');
 
   const score = readinessScore?.score || 82;
-  const history = readinessScore?.history || [
-    { date: 'Mon', score: 65 },
-    { date: 'Tue', score: 70 },
-    { date: 'Wed', score: 70 },
-    { date: 'Thu', score: 78 },
-    { date: 'Fri', score: 78 },
-    { date: 'Sat', score: 82 },
-    { date: 'Sun', score: 82 },
-  ];
 
   const checklist = [
     {
@@ -94,8 +84,11 @@ export default function ReadinessDetailScreen() {
         </Text>
       </View>
 
-      {/* Trend Chart */}
-      <TrendChart data={history} height={180} />
+      <View style={styles.dashboardGrid}>
+        <View style={styles.dashboardTile}><Text style={styles.dashboardValue}>{profile?.allergies.length || 0}</Text><Text style={styles.dashboardLabel}>ALLERGIES</Text></View>
+        <View style={styles.dashboardTile}><Text style={styles.dashboardValue}>{profile?.medications.length || 0}</Text><Text style={styles.dashboardLabel}>MEDICATIONS</Text></View>
+        <View style={styles.dashboardTile}><Text style={styles.dashboardValue}>{documents.length}</Text><Text style={styles.dashboardLabel}>RECORDS</Text></View>
+      </View>
 
       {/* Required Fields Checklist */}
       <Text style={styles.sectionTitle}>Readiness Checklist</Text>
@@ -187,6 +180,10 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     lineHeight: 18,
   },
+  dashboardGrid: { flexDirection: 'row', gap: 10, marginHorizontal: 20, marginBottom: 20 },
+  dashboardTile: { flex: 1, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  dashboardValue: { color: COLORS.brand, fontSize: 24, fontWeight: '900' },
+  dashboardLabel: { color: COLORS.muted, fontSize: 10, fontWeight: '800', marginTop: 4 },
   sectionTitle: {
     fontSize: TYPOGRAPHY.size.heading,
     fontWeight: '800',

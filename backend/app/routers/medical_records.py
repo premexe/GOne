@@ -1,5 +1,6 @@
 from datetime import date
 from pathlib import Path
+import re
 
 from fastapi.responses import FileResponse
 
@@ -30,6 +31,7 @@ from app.utils.file_storage import (
 )
 
 from app.models.medical_record import MedicalRecord
+from app.models.emergency_wallet import EmergencyWallet
 
 from app.security.dependencies import get_current_user
 from app.services.ocr_service import OCRService
@@ -39,6 +41,17 @@ router = APIRouter(
     prefix="/medical-records",
     tags=["Medical Records"]
 )
+
+def _merge_wallet_values(current: str | None, extracted: str | None) -> str | None:
+    """Merge clearly labelled OCR values without overwriting patient-entered data."""
+    values = [item.strip() for item in (current or "").split(",") if item.strip()]
+    if extracted:
+        values.extend(item.strip(" .;") for item in re.split(r"[,;/]", extracted) if item.strip())
+    return ", ".join(dict.fromkeys(values)) or None
+
+def _labelled_value(text: str, labels: str) -> str | None:
+    match = re.search(rf"(?:{labels})\s*[:\-]\s*([^\n\r]+)", text, flags=re.IGNORECASE)
+    return match.group(1).strip() if match else None
 
 
 @router.post(
@@ -192,6 +205,12 @@ def process_medical_record_ocr(
         )
 
     record.ocr_text = text
+
+    wallet = db.query(EmergencyWallet).filter(EmergencyWallet.user_id == current_user.user_id).first()
+    if wallet:
+        wallet.allergies = _merge_wallet_values(wallet.allergies, _labelled_value(text, r"allerg(?:y|ies)"))
+        wallet.current_medications = _merge_wallet_values(wallet.current_medications, _labelled_value(text, r"medications?|prescriptions?"))
+        wallet.chronic_conditions = _merge_wallet_values(wallet.chronic_conditions, _labelled_value(text, r"conditions?|diagnoses"))
 
     db.commit()
     db.refresh(record)

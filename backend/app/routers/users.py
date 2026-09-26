@@ -11,7 +11,9 @@ from app.schemas.user import (
 )
 from app.services.user_service import UserService
 from app.security.dependencies import get_current_user
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status, HTTPException, File, UploadFile
+from pathlib import Path
+from uuid import uuid4
 
 router = APIRouter(
     prefix="/users",
@@ -82,6 +84,28 @@ def update_user(
     if user_id != current_user.user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not allowed to update this user.")
     return UserService.update_user(db, user_id, user)
+
+@router.post("/{user_id}/profile-photo", response_model=UserResponse)
+def upload_profile_photo(
+    user_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if user_id != current_user.user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not allowed to update this user.")
+    if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=400, detail="Upload a JPG, PNG, or WebP image.")
+    data = file.file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Profile photos must be 5 MB or smaller.")
+    suffix = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
+    target = Path("uploads/profile-photos") / f"user-{user_id}-{uuid4().hex}{suffix}"
+    target.write_bytes(data)
+    current_user.profile_photo = f"/uploads/profile-photos/{target.name}"
+    db.commit()
+    db.refresh(current_user)
+    return current_user
 
 @router.delete("/{user_id}")
 def delete_user(

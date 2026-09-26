@@ -1,10 +1,15 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Platform } from 'react-native';
 import { MapPin, Navigation, Phone, Search, Sparkles, ChevronRight, List, Map } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { useHospitalStore } from '../../src/store/useHospitalStore';
+
+let NativeWebView: any = null;
+if (Platform.OS !== 'web') {
+  try { NativeWebView = require('react-native-webview').WebView; } catch (_) { NativeWebView = null; }
+}
 
 export default function HospitalsScreen() {
   const {
@@ -23,8 +28,14 @@ export default function HospitalsScreen() {
     const matchesSearch =
       h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       h.specialties.some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesSearch;
+    const matchesSpecialty = !selectedSpecialty || h.specialties.some((specialty) => specialty.toLowerCase() === selectedSpecialty);
+    return matchesSearch && matchesSpecialty;
   });
+
+  const hospitalMarkers = filteredHospitals.map((hospital) => ({
+    name: hospital.name.replace(/['<>&]/g, ''), lat: hospital.lat, lng: hospital.lng,
+  }));
+  const mapHtml = `<!doctype html><html><head><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/><style>html,body,#map{height:100%;margin:0} .label{font:600 12px system-ui}</style></head><body><div id="map"></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>const points=${JSON.stringify(hospitalMarkers)};const map=L.map('map');const bounds=[];points.forEach(p=>{L.marker([p.lat,p.lng]).addTo(map).bindPopup('<b>'+p.name+'</b>');bounds.push([p.lat,p.lng])});bounds.length?map.fitBounds(bounds,{padding:[28,28],maxZoom:14}):map.setView([19.7,72.77],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);</script></body></html>`;
 
   return (
     <View style={styles.container}>
@@ -92,12 +103,14 @@ export default function HospitalsScreen() {
           })}
         </ScrollView>
 
-        {/* Map View Simulation */}
+        {/* Interactive map view */}
         {viewMode === 'map' ? (
           <View style={styles.mapContainer}>
-            <MapPin size={36} color={COLORS.brand} />
-            <Text style={styles.mapText}>Interactive OpenStreetMap View</Text>
-            <Text style={styles.mapSubtext}>Showing 4 hospital pins within 5km radius</Text>
+            {Platform.OS === 'web' ? <iframe title="Nearby hospitals" srcDoc={mapHtml} style={{ width: '100%', height: '100%', border: 'none', borderRadius: 16 }} /> : NativeWebView ? <NativeWebView originWhitelist={['*']} source={{ html: mapHtml }} style={{ width: '100%', height: '100%', borderRadius: 16 }} /> : <>
+              <MapPin size={36} color={COLORS.brand} />
+              <Text style={styles.mapText}>Hospital locations are available on web</Text>
+              <Text style={styles.mapSubtext}>{filteredHospitals.length} matching hospitals</Text>
+            </>}
           </View>
         ) : (
           /* Hospital Cards List */

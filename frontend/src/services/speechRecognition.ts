@@ -9,15 +9,30 @@ type SpeechRecognitionModule = {
   addListener: (event: string, listener: (event: any) => void) => { remove: () => void };
 };
 
-let offlineModelRequested = false;
+type BrowserRecognitionEvent = {
+  results: ArrayLike<ArrayLike<{ transcript?: string }> & { isFinal?: boolean }>;
+};
 
-function isLocaleInstalled(installedLocales: string[], locale: string) {
-  const requested = locale.toLowerCase();
-  const language = requested.split('-')[0];
-  return installedLocales.some((installed) => {
-    const normalized = installed.toLowerCase();
-    return normalized === requested || normalized.split('-')[0] === language;
-  });
+type BrowserRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: BrowserRecognitionEvent) => void) | null;
+  onerror: ((event: { error?: string; message?: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+type BrowserRecognitionConstructor = new () => BrowserRecognition;
+
+function getBrowserRecognitionConstructor(): BrowserRecognitionConstructor | null {
+  const browserGlobal = globalThis as typeof globalThis & {
+    SpeechRecognition?: BrowserRecognitionConstructor;
+    webkitSpeechRecognition?: BrowserRecognitionConstructor;
+  };
+  return browserGlobal.SpeechRecognition || browserGlobal.webkitSpeechRecognition || null;
 }
 
 // Expo Go does not contain third-party native modules. Loading this lazily
@@ -32,6 +47,7 @@ function getSpeechRecognitionModule(): SpeechRecognitionModule | null {
 }
 
 export function isSpeechRecognitionAvailable(): boolean {
+  if (typeof window !== 'undefined') return Boolean(getBrowserRecognitionConstructor());
   return getSpeechRecognitionModule()?.isRecognitionAvailable() ?? false;
 }
 
@@ -41,6 +57,45 @@ export async function startSpeechRecognition(options: {
   onEnd: () => void;
   onError: (message: string) => void;
 }): Promise<{ stop: () => void; abort: () => void } | null> {
+  const BrowserRecognition = getBrowserRecognitionConstructor();
+  if (typeof window !== 'undefined' && BrowserRecognition) {
+    const recognition = new BrowserRecognition();
+    let active = true;
+
+    recognition.lang = options.language || 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onresult = (event) => {
+      const result = event.results[event.results.length - 1];
+      if (!result?.isFinal) return;
+      const transcript = result[0]?.transcript?.trim();
+      if (transcript) options.onTranscript(transcript);
+    };
+    recognition.onerror = (event) => {
+      if (active && event.error !== 'aborted') {
+        options.onError(event.message || `Browser speech recognition failed${event.error ? `: ${event.error}` : '.'}`);
+      }
+    };
+    recognition.onend = () => {
+      if (active) options.onEnd();
+    };
+
+    try {
+      recognition.start();
+    } catch (error) {
+      options.onError(error instanceof Error ? error.message : 'Browser speech recognition could not start.');
+      return null;
+    }
+
+    return {
+      stop: () => recognition.stop(),
+      abort: () => {
+        active = false;
+        recognition.abort();
+      },
+    };
+  }
+
   const speechRecognition = getSpeechRecognitionModule();
   if (!speechRecognition?.isRecognitionAvailable()) return null;
 
@@ -67,35 +122,15 @@ export async function startSpeechRecognition(options: {
     }),
   ];
 
-  // Prefer Android's downloaded on-device model. This avoids the unreliable
-  // network recognizer used by some phones and keeps emergency answers local.
-  // Android 13+ will show its system model-download dialog the first time.
-  // en-US is the reliably downloadable Google on-device model across Android
-  // devices; it still handles Indian-English emergency responses well.
   const locale = options.language || 'en-US';
-  if (speechRecognition.getSupportedLocales) {
-    try {
-      const supported = await speechRecognition.getSupportedLocales({});
-      if (!isLocaleInstalled(supported.installedLocales || [], locale)) {
-        if (!offlineModelRequested && speechRecognition.androidTriggerOfflineModelDownload) {
-          offlineModelRequested = true;
-          await speechRecognition.androidTriggerOfflineModelDownload({ locale });
-        }
-        options.onError('Downloading the offline English speech model. Complete the Android download, then start the call again.');
-        return null;
-      }
-    } catch (error) {
-      console.warn('Could not check Android offline speech model:', error);
-      options.onError('Android speech recognition is unavailable. Install or update the Google speech services, then try again.');
-      return null;
-    }
-  }
 
   speechRecognition.start({
     lang: locale,
     continuous: false,
     interimResults: true,
-    requiresOnDeviceRecognition: true,
+    // Use the phone's normal recognition service. Requiring a downloaded
+    // offline model prevented the first voice interview on many devices.
+    requiresOnDeviceRecognition: false,
     addsPunctuation: false,
     contextualStrings: ['chest pain', 'breathing difficulty', 'bleeding', 'accident', 'unconscious'],
   });

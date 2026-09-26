@@ -16,7 +16,7 @@ function getExpoGoApiUrl(): string | null {
 // automatically. A fixed EXPO_PUBLIC_API_URL is used only for web/production.
 const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 const isDeviceLocalhost = Platform.OS !== 'web' && Boolean(configuredApiUrl?.match(/localhost|127\.0\.0\.1/));
-const API_URL = (!isDeviceLocalhost ? configuredApiUrl : null)
+export const API_URL = (!isDeviceLocalhost ? configuredApiUrl : null)
   || (__DEV__ ? getExpoGoApiUrl() : null)
   || 'http://192.168.0.100:8000';
 

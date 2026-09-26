@@ -17,7 +17,7 @@ import {
 } from './mockData';
 import { rankHospitalsForEmergency } from './recommendationEngine';
 import { calculateReadinessScore, classifySymptomUrgency, summarizeMedicalDocument } from './aiService';
-import { getToken, request, setToken } from './http';
+import { API_URL, getToken, request, setToken } from './http';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AUTH_TOKEN_KEY = 'lifelink_access_token';
@@ -40,7 +40,7 @@ function toUser(user: BackendUser): User {
     phone: user.phone_number,
     dob: user.date_of_birth ?? '',
     bloodGroup: user.blood_group ?? '',
-    avatarUrl: user.profile_photo ?? undefined,
+    avatarUrl: user.profile_photo ? (user.profile_photo.startsWith('/') ? `${API_URL}${user.profile_photo}` : user.profile_photo) : undefined,
   };
 }
 
@@ -308,6 +308,16 @@ export const api = {
     } catch (err) {
       console.warn('Failed to update user on backend:', err);
     }
+    return currentUser;
+  },
+
+  async uploadProfilePhoto(file: UploadFile): Promise<User> {
+    const userId = Number(currentUser.id);
+    if (!Number.isInteger(userId) || !getToken()) throw new Error('Please sign in before uploading a profile photo.');
+    const form = new FormData();
+    form.append('file', { uri: file.uri, name: file.name, type: file.mimeType || 'image/jpeg' } as any);
+    const response = await request(`/users/${userId}/profile-photo`, { method: 'POST', body: form });
+    currentUser = toUser(response as BackendUser);
     return currentUser;
   },
 
