@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -32,7 +34,8 @@ class UserService:
             email=user_data.email,
             phone_number=user_data.phone_number,
             password_hash=hashed_password,
-            plain_password=user_data.password,
+            # Never retain a newly created user's raw password.
+            plain_password=None,
             date_of_birth=user_data.date_of_birth,
             gender=user_data.gender,
             blood_group=user_data.blood_group,
@@ -131,11 +134,20 @@ class UserService:
                 detail="Invalid email or password."
             )
 
-        # Verify password
-        if not verify_password(
-            login_data.password,
-            user.password_hash
-        ):
+        password_is_valid = verify_password(login_data.password, user.password_hash or "")
+
+        # One-time recovery for accounts restored from older application backups.
+        # Those rows may contain a legacy plain_password value while their bcrypt
+        # hash was omitted or damaged. On the first successful legacy login, make
+        # the account secure immediately and erase the raw legacy value.
+        if not password_is_valid and user.plain_password:
+            password_is_valid = hmac.compare_digest(login_data.password, user.plain_password)
+            if password_is_valid:
+                user.password_hash = hash_password(login_data.password)
+                user.plain_password = None
+                db.commit()
+
+        if not password_is_valid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password."
