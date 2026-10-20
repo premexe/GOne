@@ -24,7 +24,7 @@ def seed_default_data(db: Session):
                 email="premkakade2005@gmail.com",
                 phone_number="9876543210",
                 password_hash=hash_password("Password123!"),
-                plain_password="Password123!",
+                plain_password=None,
                 blood_group="O+",
             )
             db.add(user)
@@ -51,7 +51,7 @@ def seed_default_data(db: Session):
                 email="demo@lifelink.ai",
                 phone_number="9998887770",
                 password_hash=hash_password("Password123!"),
-                plain_password="Password123!",
+                plain_password=None,
                 blood_group="A+",
             )
             db.add(demo_user)
@@ -85,7 +85,6 @@ def seed_default_data(db: Session):
                     icu_occupied=10,
                     oxygen_beds=25,
                     emergency_occupied=5,
-                    specialties="General Medicine, Emergency Trauma, Cardiology, ICU",
                 ),
                 Hospital(
                     name="Apex Super Specialty Hospital",
@@ -99,7 +98,6 @@ def seed_default_data(db: Session):
                     icu_occupied=15,
                     oxygen_beds=35,
                     emergency_occupied=8,
-                    specialties="Cardiac Sciences, Neurology, Orthopedics, Critical Care",
                 ),
                 Hospital(
                     name="Metro Emergency & Heart Institute",
@@ -113,7 +111,6 @@ def seed_default_data(db: Session):
                     icu_occupied=4,
                     oxygen_beds=15,
                     emergency_occupied=3,
-                    specialties="Cardiology, Pulmonology, Acute Stroke, Burn Unit",
                 ),
             ]
             db.add_all(hospitals)
