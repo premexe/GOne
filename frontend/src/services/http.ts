@@ -33,9 +33,8 @@ export function getToken() {
 export async function request(path: string, options: RequestInit = {}) {
   const isFormData = options.body instanceof FormData;
   const controller = new AbortController();
-  // Render can take longer than 15 seconds to wake a cold instance. Keep SOS
-  // delivery resilient without leaving requests open indefinitely.
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  // Render can take 45-60s to wake a cold free-tier instance.
+  const timeout = setTimeout(() => controller.abort(), 90000);
   
   const headers: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
