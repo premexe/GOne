@@ -1,13 +1,13 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { Siren, Phone, Navigation, AlertTriangle, ShieldCheck, XCircle, Truck, UserCheck } from 'lucide-react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { COLORS, SPACING } from '../../src/constants/theme';
 import { TimelineStepper, StepItem } from '../../src/components/TimelineStepper';
 import { useEmergencyStore } from '../../src/store/useEmergencyStore';
 import { useProfileStore } from '../../src/store/useProfileStore';
 import { useAuthStore } from '../../src/store/useAuthStore';
-import { EmergencyVoiceCall } from '../../src/components/EmergencyVoiceCall';
+import { GOneResQCallModal } from '../../src/components/GOneResQCallModal';
 
 export default function EmergencyModeScreen() {
   const { activeRequest, isEmergencyActive, endEmergency } = useEmergencyStore();
@@ -127,10 +127,11 @@ export default function EmergencyModeScreen() {
           <TimelineStepper steps={steps} isDark={true} />
         </View>
 
-        <EmergencyVoiceCall
+        <GOneResQCallModal
           sosId={activeRequest.id}
-          patientName={user?.name || 'Patient'}
+          patientName={user?.name || (profile as any)?.personalInfo?.fullName || 'Patient'}
           emergencyDescription={[activeRequest.notes, ...(activeRequest.symptoms || []), ...(profile?.allergies || [])].filter(Boolean).join(', ') || 'Emergency check-in'}
+          autoStart={true}
         />
 
         {rejectedHospitals.length > 0 && (

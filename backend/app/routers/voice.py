@@ -28,6 +28,7 @@ except ImportError:  # pragma: no cover - package may be installed later
 from app.database.session import SessionLocal, get_db
 from app.services.voice_service import VoiceService
 from app.services.email_service import EmailService
+from app.services.gone_resq_service import GoneResqService, PROTOCOLS
 from app.models.sos import SOS
 from app.security.dependencies import get_current_user
 
@@ -393,3 +394,80 @@ async def get_transcript(sos_id: int, db: Session = Depends(get_db)):
         "email_sent": bool(sos.email_sent),
         "email_sent_at": str(sos.email_sent_at) if sos.email_sent_at else None,
     })
+
+
+# ── 7. G-ONE ResQ Voice-First Companion Endpoints ────────────────────────────
+
+@router.get(
+    "/resq/protocols",
+    summary="Get all G-ONE ResQ clinical first-aid protocols"
+)
+async def get_resq_protocols():
+    """Returns the library of 9 clinical first-aid emergency protocols."""
+    result = {}
+    for cat, data in PROTOCOLS.items():
+        result[cat] = {
+            "title": data["title"],
+            "severity": data["severity"],
+            "steps": data["first_aid_steps"],
+            "defaultResponse": data["default_voice_response"],
+        }
+    return JSONResponse({"success": True, "protocols": result})
+
+
+@router.post(
+    "/resq/turn",
+    summary="Process an interactive voice turn in G-ONE ResQ emergency call"
+)
+async def resq_turn(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Core G-ONE ResQ Voice Interaction Turn:
+    Takes user speech, classifies emergency, checks patient context from G-ONE,
+    executes protocol-bound AI reasoning (Gemini with deterministic fallback),
+    and returns voice response (1-2 sentences) + first-aid steps.
+    """
+    sos_id = int(payload.get("sosId") or payload.get("sos_id") or 0)
+    speech = str(payload.get("speech") or payload.get("text") or "").strip()
+    turn = int(payload.get("turn") or 1)
+    lang = payload.get("lang")
+
+    if not speech:
+        speech = "I need help right now."
+
+    result = GoneResqService.process_turn(
+        db=db,
+        sos_id=sos_id,
+        user_speech=speech,
+        turn_number=turn,
+        language_preference=lang,
+    )
+    return JSONResponse({"success": True, **result})
+
+
+@router.post(
+    "/resq/handover",
+    summary="Finalize G-ONE ResQ emergency session & create structured handover"
+)
+async def resq_handover(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Generates structured handover payload for G-ONE backend dispatch,
+    updates SOS database record, and sends notification email to emergency contacts.
+    """
+    sos_id = int(payload.get("sosId") or payload.get("sos_id") or 0)
+    category = str(payload.get("category") or "GENERAL")
+    notes = payload.get("notes")
+
+    result = GoneResqService.complete_handover(
+        db=db,
+        sos_id=sos_id,
+        category=category,
+        user_summary_notes=notes,
+    )
+    return JSONResponse(result)
+
