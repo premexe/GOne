@@ -18,7 +18,7 @@ const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 const isDeviceLocalhost = Platform.OS !== 'web' && Boolean(configuredApiUrl?.match(/localhost|127\.0\.0\.1/));
 export const API_URL = (!isDeviceLocalhost ? configuredApiUrl : null)
   || (__DEV__ ? getExpoGoApiUrl() : null)
-  || 'http://192.168.0.100:8000';
+  || 'https://gone-backend.onrender.com';
 
 let token: string | null = null;
 

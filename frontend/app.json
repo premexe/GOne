@@ -21,6 +21,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "com.lifelink.aiplus",
+      "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",
