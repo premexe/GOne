@@ -33,6 +33,13 @@ import {
 import * as Speech from 'expo-speech';
 import { request } from '../services/http';
 import { startSpeechRecognition } from '../services/speechRecognition';
+import {
+  localTriageDiagnostician,
+  directGeminiTriage,
+  detectLanguage,
+  classifyCategory,
+  ResqTurnResponse,
+} from '../services/emergencyAiTriage';
 
 interface Props {
   sosId: string | number;
@@ -464,6 +471,9 @@ export function GOneResQCallModal({
       text: msg.text,
     }));
 
+    let aiResponseData: ResqTurnResponse | null = null;
+
+    // 1. Try Backend API first
     try {
       const resp = await request('/voice/resq/turn', {
         method: 'POST',
@@ -472,19 +482,73 @@ export function GOneResQCallModal({
           speech: textToSend,
           turn: nextTurn,
           lang: languageRef.current,
-          history: historyForBackend,  // Full conversation context for AI
+          history: historyForBackend,
         }),
       });
 
       if (resp?.success && resp.voice_response) {
-        setCategory(resp.category || category);
-        setSeverity(resp.severity || severity);
-        setProtocolTitle(resp.protocol_title || protocolTitle);
-        if (resp.first_aid_steps?.length) setFirstAidSteps(resp.first_aid_steps);
-        if (resp.till_ambulance_arrives?.length) setTillAmbulanceArrives(resp.till_ambulance_arrives);
+        aiResponseData = {
+          success: true,
+          category: resp.category || category,
+          severity: resp.severity || severity,
+          protocol_title: resp.protocol_title || protocolTitle,
+          first_aid_steps: resp.first_aid_steps || [],
+          till_ambulance_arrives: resp.till_ambulance_arrives || [],
+          voice_response: resp.voice_response,
+          is_final: resp.is_final || false,
+        };
+      }
+    } catch {
+      // Backend unavailable / 404 / cold-start
+    }
 
-        setCurrentAiSpeech(resp.voice_response);
-        const aiMsg = { sender: 'ai' as const, text: resp.voice_response, time: nowStamp() };
+    // 2. If Backend didn't return, try Direct Gemini API with conversation history
+    if (!aiResponseData) {
+      try {
+        const geminiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+        aiResponseData = await directGeminiTriage(
+          {
+            sosId: Number(sosId) || 0,
+            speech: textToSend,
+            turn: nextTurn,
+            lang: languageRef.current,
+            history: historyForBackend,
+            patientName,
+          },
+          geminiKey
+        );
+      } catch {}
+    }
+
+    // 3. If Gemini didn't return (offline/timeout), execute Local Clinical Protocol Diagnostician
+    if (!aiResponseData) {
+      aiResponseData = localTriageDiagnostician({
+        sosId: Number(sosId) || 0,
+        speech: textToSend,
+        turn: nextTurn,
+        lang: languageRef.current,
+        history: historyForBackend,
+        patientName,
+      });
+    }
+
+    // Now apply the rich clinical AI response to state, chat transcript, and voice TTS
+    try {
+      if (aiResponseData && aiResponseData.voice_response) {
+        setCategory(aiResponseData.category || category);
+        setSeverity(aiResponseData.severity || severity);
+        setProtocolTitle(aiResponseData.protocol_title || protocolTitle);
+        if (aiResponseData.first_aid_steps?.length) {
+          setFirstAidSteps(aiResponseData.first_aid_steps);
+        }
+        if (aiResponseData.till_ambulance_arrives?.length) {
+          setTillAmbulanceArrives(aiResponseData.till_ambulance_arrives);
+        }
+
+        setCurrentAiSpeech(aiResponseData.voice_response);
+
+        // ALWAYS append AI response to chat transcript with timestamp
+        const aiMsg = { sender: 'ai' as const, text: aiResponseData.voice_response, time: nowStamp() };
         const newTranscript = [...transcriptRef.current, aiMsg];
         transcriptRef.current = newTranscript;
         setTranscript(newTranscript);
@@ -493,28 +557,16 @@ export function GOneResQCallModal({
           chatScrollRef.current?.scrollToEnd({ animated: true });
         }, 150);
 
-        speakVoice(resp.voice_response, () => {
+        // Speak aloud through TTS in patient's language
+        speakVoice(aiResponseData.voice_response, () => {
           // Continuous Loop: Auto-listen for next user utterance
-          if (!resp.is_final && isHandsFreeRef.current && phaseRef.current === 'active') {
+          if (!aiResponseData?.is_final && isHandsFreeRef.current && phaseRef.current === 'active') {
             setTimeout(() => {
               if (phaseRef.current === 'active') startListening();
             }, 450);
           }
         });
       }
-    } catch {
-      let fallback = 'Emergency responders are on their way to your exact coordinates. Please stay calm and stationary.';
-      if (languageRef.current === 'hi') {
-        fallback = 'Emergency team aapki location par aa rahi hai. Shaant rahein aur seedhe baithe rahein.';
-      } else if (languageRef.current === 'mr') {
-        fallback = 'Aapatkaleen madat gatt tumchya thikani yet aahe. Shanta raha aani aaraam kara.';
-      }
-      setCurrentAiSpeech(fallback);
-      speakVoice(fallback, () => {
-        if (isHandsFreeRef.current && phaseRef.current === 'active') {
-          setTimeout(() => startListening(), 500);
-        }
-      });
     } finally {
       setIsLoadingAi(false);
     }
