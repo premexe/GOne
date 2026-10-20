@@ -410,6 +410,7 @@ async def get_resq_protocols():
             "title": data["title"],
             "severity": data["severity"],
             "steps": data["first_aid_steps"],
+            "tillAmbulanceArrives": data.get("till_ambulance_arrives", []),
             "defaultResponse": data["default_voice_response"],
         }
     return JSONResponse({"success": True, "protocols": result})

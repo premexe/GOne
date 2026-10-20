@@ -26,6 +26,9 @@ import {
   Languages,
   Clock,
   Sparkles,
+  RefreshCw,
+  Ambulance,
+  HeartPulse,
 } from 'lucide-react-native';
 import * as Speech from 'expo-speech';
 import { request } from '../services/http';
@@ -39,6 +42,7 @@ interface Props {
 }
 
 type CallPhase = 'idle' | 'ringing' | 'active' | 'handover';
+type AppLanguage = 'auto' | 'en' | 'hi' | 'mr';
 
 export function GOneResQCallModal({
   sosId,
@@ -49,21 +53,30 @@ export function GOneResQCallModal({
   const [modalVisible, setModalVisible] = useState(false);
   const [phase, setPhase] = useState<CallPhase>('idle');
   const [callDuration, setCallDuration] = useState(0);
-  const [language, setLanguage] = useState<'en' | 'hi'>('en');
+  const [language, setLanguage] = useState<AppLanguage>('auto');
 
   // AI & Protocol state
   const [category, setCategory] = useState('GENERAL');
   const [severity, setSeverity] = useState('MODERATE');
   const [protocolTitle, setProtocolTitle] = useState('G-ONE ResQ Emergency Protocol');
   const [firstAidSteps, setFirstAidSteps] = useState<string[]>([]);
+  const [tillAmbulanceArrives, setTillAmbulanceArrives] = useState<string[]>([
+    'Keep patient sitting upright in a calm, well-ventilated space.',
+    'Unlock front gate / entrance so paramedics can enter immediately.',
+    'Gather current medications and patient ID for the ambulance team.',
+    'Do not feed solid food or liquids if semi-conscious.',
+    'Stay on this line — emergency dispatch is tracking your GPS coordinates.',
+  ]);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const [completedAmbulanceSteps, setCompletedAmbulanceSteps] = useState<number[]>([]);
   const [currentAiSpeech, setCurrentAiSpeech] = useState('');
   const [patientSpeech, setPatientSpeech] = useState('');
   const [turn, setTurn] = useState(1);
-  const [transcript, setTranscript] = useState<Array<{ sender: 'ai' | 'patient'; text: string }>>([]);
+  const [transcript, setTranscript] = useState<Array<{ sender: 'ai' | 'patient'; text: string; time: string }>>([]);
   const [handoverSummary, setHandoverSummary] = useState('');
 
-  // Call controls state
+  // Continuous Hands-Free Dialogue Loop
+  const [isHandsFree, setIsHandsFree] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isListening, setIsListening] = useState(false);
@@ -78,10 +91,39 @@ export function GOneResQCallModal({
   const wave4 = useRef(new Animated.Value(0.8)).current;
   const wave5 = useRef(new Animated.Value(0.5)).current;
 
-  // Refs
+  // Mutable state refs to prevent stale closure bugs in continuous voice loop
   const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const timerRef = useRef<any>(null);
   const ringingTimer = useRef<any>(null);
+  const silenceRestartTimer = useRef<any>(null);
+  const lastSpokenBufferRef = useRef<string>('');
+  const isHandsFreeRef = useRef<boolean>(true);
+  const phaseRef = useRef<CallPhase>('idle');
+  const languageRef = useRef<AppLanguage>('auto');
+  const isMutedRef = useRef<boolean>(false);
+  const isLoadingAiRef = useRef<boolean>(false);
+  const chatScrollRef = useRef<ScrollView | null>(null);
+
+  // Sync refs with state
+  useEffect(() => {
+    isHandsFreeRef.current = isHandsFree;
+  }, [isHandsFree]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
+  useEffect(() => {
+    isLoadingAiRef.current = isLoadingAi;
+  }, [isLoadingAi]);
 
   // Auto-start trigger when SOS is initiated
   useEffect(() => {
@@ -90,13 +132,13 @@ export function GOneResQCallModal({
     }
   }, [autoStart]);
 
-  // Breathing pulse animation for ringing / active call avatar
+  // Pulse animation for ringing and active dispatcher
   useEffect(() => {
     if (phase === 'ringing' || phase === 'active') {
       const pulse = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.18, duration: 900, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1.0, duration: 900, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.15, duration: 850, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.0, duration: 850, useNativeDriver: true }),
         ])
       );
       pulse.start();
@@ -104,7 +146,7 @@ export function GOneResQCallModal({
     }
   }, [phase]);
 
-  // Audio wave visualizer animation when active
+  // Sound wave animation
   useEffect(() => {
     if (phase === 'active') {
       const createWaveLoop = (anim: Animated.Value, duration: number, min: number, max: number) => {
@@ -116,11 +158,11 @@ export function GOneResQCallModal({
         );
       };
 
-      const w1 = createWaveLoop(wave1, 400, 0.2, 1.0);
-      const w2 = createWaveLoop(wave2, 600, 0.3, 0.9);
-      const w3 = createWaveLoop(wave3, 350, 0.1, 1.0);
-      const w4 = createWaveLoop(wave4, 500, 0.4, 0.85);
-      const w5 = createWaveLoop(wave5, 450, 0.2, 0.95);
+      const w1 = createWaveLoop(wave1, 380, 0.2, 1.0);
+      const w2 = createWaveLoop(wave2, 550, 0.3, 0.9);
+      const w3 = createWaveLoop(wave3, 320, 0.15, 1.0);
+      const w4 = createWaveLoop(wave4, 480, 0.35, 0.85);
+      const w5 = createWaveLoop(wave5, 420, 0.2, 0.95);
 
       w1.start();
       w2.start();
@@ -153,11 +195,15 @@ export function GOneResQCallModal({
     };
   }, [phase]);
 
-  // Format seconds to MM:SS
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
     const remainder = secs % 60;
     return `${mins.toString().padStart(2, '0')}:${remainder.toString().padStart(2, '0')}`;
+  };
+
+  const nowStamp = () => {
+    const d = new Date();
+    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
   };
 
   // ── Speech Output (TTS) ────────────────────────────────────────────────────
@@ -171,7 +217,16 @@ export function GOneResQCallModal({
       Speech.stop();
     } catch {}
 
-    const langTag = language === 'hi' ? 'hi-IN' : 'en-IN';
+    const currentLang = languageRef.current;
+    let langTag = 'en-IN';
+    if (currentLang === 'mr') langTag = 'mr-IN';
+    else if (currentLang === 'hi') langTag = 'hi-IN';
+    else if (currentLang === 'auto') {
+      // Auto-detect script in text
+      if (/[\u0900-\u097F]/.test(text)) {
+        langTag = /आहे|होत|त्रास|रक्त|लवकर/.test(text) ? 'mr-IN' : 'hi-IN';
+      }
+    }
 
     // Web Speech API fallback
     if (Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -179,7 +234,7 @@ export function GOneResQCallModal({
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = langTag;
-        utterance.rate = 0.95;
+        utterance.rate = 0.92;
         utterance.pitch = 1.0;
         utterance.onend = () => {
           if (onEnd) onEnd();
@@ -192,14 +247,18 @@ export function GOneResQCallModal({
       } catch {}
     }
 
-    // Expo Speech on native device
+    // Expo Speech on Native Android / iOS
     try {
       Speech.speak(text, {
         language: langTag,
-        rate: 0.95,
+        rate: 0.92,
         pitch: 1.0,
-        onDone: onEnd,
-        onError: onEnd,
+        onDone: () => {
+          if (onEnd) onEnd();
+        },
+        onError: () => {
+          if (onEnd) onEnd();
+        },
       });
     } catch {
       if (onEnd) onEnd();
@@ -217,25 +276,56 @@ export function GOneResQCallModal({
 
   // ── Speech Recognition (STT) ───────────────────────────────────────────────
   const startListening = async () => {
-    if (isMuted || phase !== 'active') return;
+    if (isMutedRef.current || phaseRef.current !== 'active' || isLoadingAiRef.current) return;
 
     try {
+      if (silenceRestartTimer.current) clearTimeout(silenceRestartTimer.current);
+
+      lastSpokenBufferRef.current = '';
+      setPatientSpeech('');
       setIsListening(true);
+
+      const curLang = languageRef.current;
+      let recogLocale = 'en-IN';
+      if (curLang === 'mr') recogLocale = 'mr-IN';
+      else if (curLang === 'hi') recogLocale = 'hi-IN';
+      else if (curLang === 'auto') recogLocale = 'hi-IN'; // Recognizes Hindi, Hinglish, Marathi, and English on Indian devices
+
       const handle = await startSpeechRecognition({
-        language: language === 'hi' ? 'hi-IN' : 'en-IN',
+        language: recogLocale,
         onTranscript: (spoken) => {
-          setPatientSpeech(spoken);
+          if (spoken && spoken.trim()) {
+            lastSpokenBufferRef.current = spoken.trim();
+            setPatientSpeech(spoken.trim());
+          }
         },
         onEnd: () => {
           setIsListening(false);
           recognitionRef.current = null;
-          if (patientSpeech.trim()) {
-            handlePatientSubmit(patientSpeech.trim());
+
+          const finalSpoken = lastSpokenBufferRef.current.trim();
+          if (finalSpoken) {
+            lastSpokenBufferRef.current = '';
+            handlePatientSubmit(finalSpoken);
+          } else if (isHandsFreeRef.current && phaseRef.current === 'active' && !isLoadingAiRef.current) {
+            // Keep hands-free listening active if nothing heard after a brief silence
+            silenceRestartTimer.current = setTimeout(() => {
+              if (phaseRef.current === 'active' && !isLoadingAiRef.current && isHandsFreeRef.current) {
+                startListening();
+              }
+            }, 1200);
           }
         },
         onError: () => {
           setIsListening(false);
           recognitionRef.current = null;
+          if (isHandsFreeRef.current && phaseRef.current === 'active' && !isLoadingAiRef.current) {
+            silenceRestartTimer.current = setTimeout(() => {
+              if (phaseRef.current === 'active' && !isLoadingAiRef.current && isHandsFreeRef.current) {
+                startListening();
+              }
+            }, 1500);
+          }
         },
       });
 
@@ -251,6 +341,7 @@ export function GOneResQCallModal({
 
   const stopListening = () => {
     setIsListening(false);
+    if (silenceRestartTimer.current) clearTimeout(silenceRestartTimer.current);
     try {
       recognitionRef.current?.stop();
       recognitionRef.current = null;
@@ -263,11 +354,12 @@ export function GOneResQCallModal({
     setModalVisible(true);
     setTranscript([]);
     setCompletedSteps([]);
+    setCompletedAmbulanceSteps([]);
 
-    // Auto-answer after 7 seconds if not manually answered or declined
+    // Auto-answer after 6 seconds if not manually answered or declined
     ringingTimer.current = setTimeout(() => {
       answerCall();
-    }, 7000);
+    }, 6000);
   };
 
   // ── Answer Call ────────────────────────────────────────────────────────────
@@ -276,13 +368,18 @@ export function GOneResQCallModal({
     setPhase('active');
     setIsLoadingAi(true);
 
-    const initialGreeting =
-      language === 'hi'
-        ? `Namaste ${patientName.split(' ')[0]}, main LifeLink G-ONE ResQ Emergency Voice Companion hoon. Responders ko aapka alert mil gaya hai. Kripya batayein aapko kya takleef ho rahi hai?`
-        : `Hello ${patientName.split(' ')[0]}, this is LifeLink G-ONE ResQ Emergency Voice Companion. Responders have received your GPS coordinates. Tell me what happened and how you are feeling?`;
+    const curLang = languageRef.current;
+    let initialGreeting = `Hello ${patientName.split(' ')[0]}, this is LifeLink G-ONE ResQ Emergency Voice Companion. Responders have received your GPS coordinates. Tell me what happened?`;
+    if (curLang === 'hi') {
+      initialGreeting = `Namaste ${patientName.split(' ')[0]}, main LifeLink G-ONE ResQ Emergency Voice Companion hoon. Responders ko aapka alert mil gaya hai. Batayein aapko kya takleef ho rahi hai?`;
+    } else if (curLang === 'mr') {
+      initialGreeting = `Namaskar ${patientName.split(' ')[0]}, mee LifeLink G-ONE ResQ aapatkaleen aavaj saatheedhar aahe. Madat gataala tumche location milele aahe. Kripaya sanga kay tras hotoy?`;
+    } else if (curLang === 'auto') {
+      initialGreeting = `Hello ${patientName.split(' ')[0]}, G-ONE ResQ Dispatcher here. Responders are notified. Tell me what happened — you can speak in English, Hindi, or Marathi.`;
+    }
 
     setCurrentAiSpeech(initialGreeting);
-    setTranscript([{ sender: 'ai', text: initialGreeting }]);
+    setTranscript([{ sender: 'ai', text: initialGreeting, time: nowStamp() }]);
 
     // Query initial turn from ResQ Engine with emergency description
     try {
@@ -290,9 +387,9 @@ export function GOneResQCallModal({
         method: 'POST',
         body: JSON.stringify({
           sosId: Number(sosId) || 0,
-          speech: emergencyDescription || 'Emergency SOS initiated',
+          speech: emergencyDescription || 'Emergency SOS initiated. Patient needs assistance.',
           turn: 1,
-          lang: language,
+          lang: curLang,
         }),
       });
 
@@ -300,24 +397,33 @@ export function GOneResQCallModal({
         setCategory(resp.category || 'GENERAL');
         setSeverity(resp.severity || 'MODERATE');
         setProtocolTitle(resp.protocol_title || 'Emergency Protocol');
-        setFirstAidSteps(resp.first_aid_steps || []);
+        if (resp.first_aid_steps?.length) setFirstAidSteps(resp.first_aid_steps);
+        if (resp.till_ambulance_arrives?.length) setTillAmbulanceArrives(resp.till_ambulance_arrives);
+
         if (resp.voice_response) {
           setCurrentAiSpeech(resp.voice_response);
           setTranscript([
-            { sender: 'ai', text: resp.voice_response },
+            { sender: 'ai', text: resp.voice_response, time: nowStamp() },
           ]);
           speakVoice(resp.voice_response, () => {
-            startListening();
+            // Automatically listen after AI finishes speaking (Hands-Free!)
+            if (isHandsFreeRef.current) {
+              setTimeout(() => startListening(), 400);
+            }
           });
         }
       } else {
         speakVoice(initialGreeting, () => {
-          startListening();
+          if (isHandsFreeRef.current) {
+            setTimeout(() => startListening(), 400);
+          }
         });
       }
     } catch {
       speakVoice(initialGreeting, () => {
-        startListening();
+        if (isHandsFreeRef.current) {
+          setTimeout(() => startListening(), 400);
+        }
       });
     } finally {
       setIsLoadingAi(false);
@@ -334,11 +440,16 @@ export function GOneResQCallModal({
     const textToSend = userText.trim();
     setPatientSpeech('');
     setManualText('');
-    setTranscript((prev) => [...prev, { sender: 'patient', text: textToSend }]);
+    setTranscript((prev) => [...prev, { sender: 'patient', text: textToSend, time: nowStamp() }]);
     setIsLoadingAi(true);
 
     const nextTurn = turn + 1;
     setTurn(nextTurn);
+
+    // Scroll chat to bottom
+    setTimeout(() => {
+      chatScrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
 
     try {
       const resp = await request('/voice/resq/turn', {
@@ -347,7 +458,7 @@ export function GOneResQCallModal({
           sosId: Number(sosId) || 0,
           speech: textToSend,
           turn: nextTurn,
-          lang: language,
+          lang: languageRef.current,
         }),
       });
 
@@ -355,23 +466,41 @@ export function GOneResQCallModal({
         setCategory(resp.category || category);
         setSeverity(resp.severity || severity);
         setProtocolTitle(resp.protocol_title || protocolTitle);
-        setFirstAidSteps(resp.first_aid_steps || firstAidSteps);
+        if (resp.first_aid_steps?.length) setFirstAidSteps(resp.first_aid_steps);
+        if (resp.till_ambulance_arrives?.length) setTillAmbulanceArrives(resp.till_ambulance_arrives);
+
         setCurrentAiSpeech(resp.voice_response);
-        setTranscript((prev) => [...prev, { sender: 'ai', text: resp.voice_response }]);
+        setTranscript((prev) => [
+          ...prev,
+          { sender: 'ai', text: resp.voice_response, time: nowStamp() },
+        ]);
+
+        setTimeout(() => {
+          chatScrollRef.current?.scrollToEnd({ animated: true });
+        }, 150);
 
         speakVoice(resp.voice_response, () => {
-          if (!resp.is_final) {
-            startListening();
+          // Continuous Loop: Auto-listen for next user utterance
+          if (!resp.is_final && isHandsFreeRef.current && phaseRef.current === 'active') {
+            setTimeout(() => {
+              if (phaseRef.current === 'active') startListening();
+            }, 450);
           }
         });
       }
     } catch {
-      const fallback =
-        language === 'hi'
-          ? 'Emergency team aapki taraf aa rahi hai. Shaant rahein aur seedhe baithe rahein.'
-          : 'Responders are on their way to your exact coordinates. Please stay calm and stationary.';
+      let fallback = 'Emergency responders are on their way to your exact coordinates. Please stay calm and stationary.';
+      if (languageRef.current === 'hi') {
+        fallback = 'Emergency team aapki location par aa rahi hai. Shaant rahein aur seedhe baithe rahein.';
+      } else if (languageRef.current === 'mr') {
+        fallback = 'Aapatkaleen madat gatt tumchya thikani yet aahe. Shanta raha aani aaraam kara.';
+      }
       setCurrentAiSpeech(fallback);
-      speakVoice(fallback);
+      speakVoice(fallback, () => {
+        if (isHandsFreeRef.current && phaseRef.current === 'active') {
+          setTimeout(() => startListening(), 500);
+        }
+      });
     } finally {
       setIsLoadingAi(false);
     }
@@ -380,6 +509,7 @@ export function GOneResQCallModal({
   // ── End Call & Structured Handover ─────────────────────────────────────────
   const endCall = async () => {
     if (ringingTimer.current) clearTimeout(ringingTimer.current);
+    if (silenceRestartTimer.current) clearTimeout(silenceRestartTimer.current);
     stopVoice();
     stopListening();
 
@@ -391,7 +521,7 @@ export function GOneResQCallModal({
         body: JSON.stringify({
           sosId: Number(sosId) || 0,
           category,
-          notes: `Call completed (${formatTime(callDuration)}). ${transcript.length} turns recorded.`,
+          notes: `Call duration: ${formatTime(callDuration)}. ${transcript.length} turns recorded.`,
         }),
       });
 
@@ -399,262 +529,264 @@ export function GOneResQCallModal({
         setHandoverSummary(resp.summary);
       } else {
         setHandoverSummary(
-          `G-ONE ResQ Emergency Handover: Categorized as [${protocolTitle}] with [${severity}] urgency. Responders and emergency contacts notified.`
+          `G-ONE ResQ Emergency Handover: Patient ${patientName} emergency categorized as [${protocolTitle}] with [${severity}] urgency. Responders dispatched with live GPS coordinates.`
         );
       }
     } catch {
       setHandoverSummary(
-        `G-ONE ResQ Handover Completed: Protocol [${protocolTitle}] executed. Responders alerted.`
+        `G-ONE ResQ Emergency Handover: Patient ${patientName} emergency categorized as [${protocolTitle}] with [${severity}] urgency. Responders dispatched with live GPS coordinates.`
       );
     }
   };
 
-  const closeHandoverModal = () => {
+  const closeFullModal = () => {
+    stopVoice();
+    stopListening();
+    if (ringingTimer.current) clearTimeout(ringingTimer.current);
+    if (silenceRestartTimer.current) clearTimeout(silenceRestartTimer.current);
     setPhase('idle');
     setModalVisible(false);
   };
 
-  // Quick symptom phrases for rapid 1-tap speech
-  const quickPhrases = [
-    { label: 'Chest Pain', query: 'I have severe chest pain and pressure in my chest.' },
-    { label: 'Bleeding', query: 'There is heavy bleeding from a deep wound.' },
-    { label: 'Can’t Breathe', query: 'I am having severe difficulty breathing, asthma attack.' },
-    { label: 'Unconscious', query: 'Patient is unconscious and unresponsive on the floor.' },
-    { label: 'Accident / Fall', query: 'Patient fell down in an accident with broken bone.' },
-    { label: 'Burns', query: 'Severe burn from hot fire and boiling liquid.' },
-  ];
+  const toggleStep = (index: number) => {
+    setCompletedSteps((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
 
-  const toggleStepCompleted = (index: number) => {
-    if (completedSteps.includes(index)) {
-      setCompletedSteps(completedSteps.filter((i) => i !== index));
-    } else {
-      setCompletedSteps([...completedSteps, index]);
-    }
+  const toggleAmbulanceStep = (index: number) => {
+    setCompletedAmbulanceSteps((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
   };
 
   return (
-    <>
-      {/* ── Trigger Button in SOS Emergency Screen ──────────────────────────── */}
+    <View style={styles.container}>
+      {/* Launch Companion Button */}
       <TouchableOpacity
-        style={styles.triggerButton}
+        style={styles.openCallButton}
         onPress={triggerIncomingCall}
-        activeOpacity={0.88}
+        activeOpacity={0.85}
       >
-        <View style={styles.triggerPulse}>
-          <PhoneCall size={22} color="#FFFFFF" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={styles.triggerTitle}>G-ONE ResQ Voice Companion</Text>
-            <View style={styles.livePill}>
-              <Text style={styles.livePillText}>AI LIVE</Text>
-            </View>
-          </View>
-          <Text style={styles.triggerSubtitle}>
-            Voice-first first-aid guidance & dispatcher handover
-          </Text>
+        <PhoneCall size={20} color="#FFFFFF" style={styles.btnIcon} />
+        <View style={styles.btnTextContainer}>
+          <Text style={styles.btnTitle}>G-ONE ResQ AI Voice Companion</Text>
+          <Text style={styles.btnSubtitle}>Hands-Free Voice • Hindi • Marathi • English</Text>
         </View>
       </TouchableOpacity>
 
-      {/* ── Realistic Fullscreen Emergency Call Modal ─────────────────────── */}
-      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={endCall}>
-        <View style={styles.modalOverlay}>
-          {/* ══════════════════════════════════════════════════════════════════ */}
-          {/* PHASE 1: INCOMING RINGING CALL                                    */}
-          {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* Main Full-Screen Emergency Voice Modal */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={closeFullModal}
+      >
+        <View style={styles.modalRoot}>
+          {/* ════════════════════════════════════════════════════════════════════
+              PHASE 1: INCOMING RINGING SCREEN
+          ════════════════════════════════════════════════════════════════════ */}
           {phase === 'ringing' && (
             <View style={styles.ringingContainer}>
-              {/* Emergency Flashing Header */}
-              <View style={styles.emergencyBanner}>
-                <ShieldAlert size={20} color="#FFFFFF" />
-                <Text style={styles.emergencyBannerText}>EMERGENCY DISPATCH INCOMING</Text>
-              </View>
-
-              {/* Pulsing Avatar */}
-              <Animated.View style={[styles.ringingAvatarPulse, { transform: [{ scale: pulseAnim }] }]}>
-                <View style={styles.ringingAvatarInner}>
-                  <PhoneCall size={54} color="#FFFFFF" />
+              <View style={styles.ringingHeader}>
+                <View style={styles.liveIndicator}>
+                  <View style={styles.redDot} />
+                  <Text style={styles.liveText}>PRIORITY 1 INCOMING CALL</Text>
                 </View>
-              </Animated.View>
-
-              <Text style={styles.ringingCallerTitle}>G-ONE ResQ Dispatcher</Text>
-              <Text style={styles.ringingCallerSubtitle}>
-                AI Voice Companion · LifeLink Network
-              </Text>
-
-              <View style={styles.gpsAlertBox}>
-                <AlertTriangle size={16} color="#FBBF24" />
-                <Text style={styles.gpsAlertText}>
-                  GPS Location Transmitted · Paramedics Active
-                </Text>
+                <Text style={styles.callerSub}>G-ONE Emergency Response System</Text>
               </View>
 
-              {/* Answer & Decline Buttons */}
-              <View style={styles.callResponseRow}>
+              <View style={styles.avatarWrapper}>
+                <Animated.View
+                  style={[
+                    styles.avatarHalo,
+                    { transform: [{ scale: pulseAnim }] },
+                  ]}
+                />
+                <View style={styles.avatarCircle}>
+                  <HeartPulse size={54} color="#EF4444" />
+                </View>
+              </View>
+
+              <Text style={styles.callerName}>G-ONE ResQ Dispatcher</Text>
+              <Text style={styles.callerStatus}>Emergency AI Companion • Triage Active</Text>
+              <Text style={styles.autoAnswerNotice}>Auto-answering in 6s...</Text>
+
+              <View style={styles.ringingActions}>
                 <TouchableOpacity
-                  style={[styles.callBtn, styles.declineBtn]}
-                  onPress={() => {
-                    if (ringingTimer.current) clearTimeout(ringingTimer.current);
-                    setPhase('idle');
-                    setModalVisible(false);
-                  }}
+                  style={[styles.callActionBtn, styles.declineBtn]}
+                  onPress={closeFullModal}
                 >
                   <PhoneOff size={28} color="#FFFFFF" />
-                  <Text style={styles.callBtnLabel}>Decline</Text>
+                  <Text style={styles.actionBtnLabel}>Decline</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.callBtn, styles.answerBtn]}
+                  style={[styles.callActionBtn, styles.acceptBtn]}
                   onPress={answerCall}
                 >
-                  <Phone size={32} color="#FFFFFF" />
-                  <Text style={styles.callBtnLabel}>Answer Call</Text>
+                  <Phone size={28} color="#FFFFFF" />
+                  <Text style={styles.actionBtnLabel}>Answer</Text>
                 </TouchableOpacity>
               </View>
             </View>
           )}
 
-          {/* ══════════════════════════════════════════════════════════════════ */}
-          {/* PHASE 2: ACTIVE EMERGENCY CALL INTERFACE                          */}
-          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* ════════════════════════════════════════════════════════════════════
+              PHASE 2: ACTIVE EMERGENCY CALL
+          ════════════════════════════════════════════════════════════════════ */}
           {phase === 'active' && (
             <View style={styles.activeCallContainer}>
-              {/* Top Header Bar */}
-              <View style={styles.topCallHeader}>
-                <View style={styles.timerBadge}>
-                  <View style={styles.greenLiveDot} />
-                  <Clock size={13} color="#10B981" />
-                  <Text style={styles.timerText}>{formatTime(callDuration)}</Text>
+              {/* Top Bar with Language Selector & Hands-free Switch */}
+              <View style={styles.activeTopBar}>
+                <View>
+                  <View style={styles.activeCallerBadge}>
+                    <View style={styles.activeDot} />
+                    <Text style={styles.activeCallerName}>G-ONE ResQ Dispatcher</Text>
+                  </View>
+                  <View style={styles.timerRow}>
+                    <Clock size={13} color="#94A3B8" />
+                    <Text style={styles.callTimerText}>{formatTime(callDuration)}</Text>
+                    <View style={styles.severityChip}>
+                      <Text style={styles.severityChipText}>{severity}</Text>
+                    </View>
+                  </View>
                 </View>
 
-                {/* Language Switcher */}
-                <TouchableOpacity
-                  style={styles.langToggle}
-                  onPress={() => {
-                    const nextLang = language === 'en' ? 'hi' : 'en';
-                    setLanguage(nextLang);
-                  }}
-                >
-                  <Languages size={14} color="#60A5FA" />
-                  <Text style={styles.langToggleText}>
-                    {language === 'en' ? 'English (Tap for Hindi)' : 'Hindi / Hinglish'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Caller Info & Protocol Badge */}
-              <View style={styles.callerHeader}>
-                <Text style={styles.activeCallerName}>G-ONE ResQ AI Dispatcher</Text>
-                <View
-                  style={[
-                    styles.severityBadge,
-                    severity === 'CRITICAL' && styles.badgeCritical,
-                    severity === 'HIGH' && styles.badgeHigh,
-                  ]}
-                >
-                  <ShieldAlert size={13} color="#FFFFFF" />
-                  <Text style={styles.severityBadgeText}>{protocolTitle}</Text>
+                {/* Multi-Language Selector */}
+                <View style={styles.langPills}>
+                  {(['auto', 'en', 'hi', 'mr'] as AppLanguage[]).map((l) => (
+                    <TouchableOpacity
+                      key={l}
+                      style={[styles.langPill, language === l && styles.langPillActive]}
+                      onPress={() => {
+                        setLanguage(l);
+                        languageRef.current = l;
+                      }}
+                    >
+                      <Text style={[styles.langPillText, language === l && styles.langPillTextActive]}>
+                        {l === 'auto' ? '⚡ Auto' : l === 'en' ? 'EN' : l === 'hi' ? 'हिंदी' : 'मराठी'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               </View>
 
-              {/* Sound Wave Visualizer */}
-              <View style={styles.soundWaveRow}>
-                <Animated.View
-                  style={[
-                    styles.waveBar,
-                    {
-                      height: wave1.interpolate({ inputRange: [0, 1], outputRange: [8, 36] }),
-                    },
-                  ]}
-                />
-                <Animated.View
-                  style={[
-                    styles.waveBar,
-                    {
-                      height: wave2.interpolate({ inputRange: [0, 1], outputRange: [12, 46] }),
-                    },
-                  ]}
-                />
-                <Animated.View
-                  style={[
-                    styles.waveBar,
-                    styles.waveBarCenter,
-                    {
-                      height: wave3.interpolate({ inputRange: [0, 1], outputRange: [14, 52] }),
-                    },
-                  ]}
-                />
-                <Animated.View
-                  style={[
-                    styles.waveBar,
-                    {
-                      height: wave4.interpolate({ inputRange: [0, 1], outputRange: [10, 42] }),
-                    },
-                  ]}
-                />
-                <Animated.View
-                  style={[
-                    styles.waveBar,
-                    {
-                      height: wave5.interpolate({ inputRange: [0, 1], outputRange: [8, 32] }),
-                    },
-                  ]}
-                />
-              </View>
+              {/* Hands-Free Mode Banner */}
+              <TouchableOpacity
+                style={[styles.handsFreeBar, isHandsFree && styles.handsFreeBarActive]}
+                onPress={() => {
+                  const nextVal = !isHandsFree;
+                  setIsHandsFree(nextVal);
+                  isHandsFreeRef.current = nextVal;
+                  if (nextVal && !isListening && !isLoadingAi) {
+                    startListening();
+                  }
+                }}
+              >
+                <Sparkles size={14} color={isHandsFree ? '#10B981' : '#94A3B8'} />
+                <Text style={[styles.handsFreeText, isHandsFree && styles.handsFreeTextActive]}>
+                  {isHandsFree
+                    ? 'Hands-Free Voice Active (Auto-Listens & Responds)'
+                    : 'Hands-Free Off (Tap Mic to Speak)'}
+                </Text>
+                <View style={[styles.toggleDot, isHandsFree && styles.toggleDotActive]} />
+              </TouchableOpacity>
 
-              {/* Scrollable Transcript & First-Aid Protocols */}
+              {/* Main Scrollable Content */}
               <ScrollView
-                style={styles.callContentScroll}
-                contentContainerStyle={{ paddingBottom: 16 }}
+                style={styles.scrollArea}
+                contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
               >
-                {/* AI Speech Bubble */}
-                <View style={styles.aiSpeechCard}>
-                  <View style={styles.aiSpeakerRow}>
-                    <Sparkles size={16} color="#60A5FA" />
-                    <Text style={styles.aiSpeakerLabel}>G-ONE ResQ Spoken Guidance</Text>
-                    {isLoadingAi && <ActivityIndicator size="small" color="#60A5FA" />}
+                {/* Visualizer & Spoken AI Banner */}
+                <View style={styles.aiSpeakingCard}>
+                  <View style={styles.aiHeaderRow}>
+                    <ShieldAlert size={18} color="#EF4444" />
+                    <Text style={styles.protocolBadge}>{protocolTitle}</Text>
+                    {isLoadingAi && <ActivityIndicator size="small" color="#EF4444" style={{ marginLeft: 6 }} />}
                   </View>
-                  <Text style={styles.aiSpeechContent}>
-                    {currentAiSpeech || 'Connecting to G-ONE emergency dispatcher...'}
+
+                  {/* Sound Wave Visualizer */}
+                  <View style={styles.waveVisualizerRow}>
+                    <Animated.View style={[styles.waveBar, { height: Animated.multiply(wave1, 28) }]} />
+                    <Animated.View style={[styles.waveBar, { height: Animated.multiply(wave2, 34) }]} />
+                    <Animated.View style={[styles.waveBar, { height: Animated.multiply(wave3, 24) }]} />
+                    <Animated.View style={[styles.waveBar, { height: Animated.multiply(wave4, 38) }]} />
+                    <Animated.View style={[styles.waveBar, { height: Animated.multiply(wave5, 26) }]} />
+                  </View>
+
+                  {/* Live AI Spoken Text */}
+                  <Text style={styles.currentSpeechText}>
+                    "{currentAiSpeech || 'Listening to your situation...'}"
                   </Text>
+
+                  {/* Listening Indicator / Patient Voice Subtitle */}
+                  {isListening && (
+                    <View style={styles.listeningSubtitleBox}>
+                      <Mic size={15} color="#10B981" />
+                      <Text style={styles.listeningSubtitleText}>
+                        {patientSpeech ? `You: "${patientSpeech}"` : 'Listening to you... (बोलिए / बोला...)'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
-                {/* Patient Speech Indicator */}
-                {isListening && (
-                  <View style={styles.listeningBox}>
-                    <Mic size={16} color="#EF4444" />
-                    <Text style={styles.listeningText}>
-                      Listening to you... {patientSpeech || 'Speak now...'}
-                    </Text>
+                {/* 🚨 CRITICAL: Actions Till Ambulance Arrives Banner */}
+                <View style={styles.ambulanceCard}>
+                  <View style={styles.ambulanceHeader}>
+                    <Ambulance size={20} color="#F59E0B" />
+                    <View style={styles.ambulanceTitleCol}>
+                      <Text style={styles.ambulanceTitle}>WHILE AMBULANCE IS EN ROUTE</Text>
+                      <Text style={styles.ambulanceSubtitle}>रुग्णवाहिका येईपर्यंत • जब तक एम्बुलेंस न आए (ETA: ~5 MIN)</Text>
+                    </View>
                   </View>
-                )}
 
-                {/* Interactive First-Aid Protocol Checklist */}
-                {firstAidSteps.length > 0 && (
-                  <View style={styles.protocolCard}>
-                    <Text style={styles.protocolCardTitle}>
-                      Authoritative First-Aid Steps (Tap as completed):
-                    </Text>
-                    {firstAidSteps.map((step, idx) => {
-                      const isDone = completedSteps.includes(idx);
+                  <View style={styles.ambulanceStepList}>
+                    {tillAmbulanceArrives.map((action, idx) => {
+                      const isDone = completedAmbulanceSteps.includes(idx);
                       return (
                         <TouchableOpacity
                           key={idx}
-                          style={[styles.protocolStepRow, isDone && styles.stepRowDone]}
-                          onPress={() => toggleStepCompleted(idx)}
+                          style={[styles.ambulanceStepRow, isDone && styles.ambulanceStepRowDone]}
+                          onPress={() => toggleAmbulanceStep(idx)}
                           activeOpacity={0.7}
                         >
                           <CheckCircle2
                             size={18}
-                            color={isDone ? '#10B981' : '#6B7280'}
+                            color={isDone ? '#10B981' : '#64748B'}
+                            style={{ marginRight: 8, marginTop: 2 }}
                           />
-                          <Text
-                            style={[
-                              styles.protocolStepText,
-                              isDone && styles.stepTextDone,
-                            ]}
-                          >
+                          <Text style={[styles.ambulanceStepText, isDone && styles.stepTextCompleted]}>
+                            {action}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Protocol Checklist Steps */}
+                {firstAidSteps.length > 0 && (
+                  <View style={styles.protocolChecklistCard}>
+                    <Text style={styles.cardHeaderTitle}>Emergency Protocol Checklist</Text>
+                    <Text style={styles.cardHeaderSubtitle}>Follow these clinical steps immediately:</Text>
+
+                    {firstAidSteps.map((step, idx) => {
+                      const isChecked = completedSteps.includes(idx);
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          style={[styles.stepItem, isChecked && styles.stepItemCompleted]}
+                          onPress={() => toggleStep(idx)}
+                          activeOpacity={0.7}
+                        >
+                          <CheckCircle2
+                            size={18}
+                            color={isChecked ? '#10B981' : '#475569'}
+                            style={{ marginRight: 8, marginTop: 2 }}
+                          />
+                          <Text style={[styles.stepText, isChecked && styles.stepTextCompleted]}>
                             {step}
                           </Text>
                         </TouchableOpacity>
@@ -663,675 +795,886 @@ export function GOneResQCallModal({
                   </View>
                 )}
 
-                {/* Quick 1-Tap Speech Options */}
-                <Text style={styles.quickPhrasesTitle}>Quick Symptoms (Tap to speak):</Text>
-                <View style={styles.quickPhrasesWrap}>
-                  {quickPhrases.map((item, i) => (
-                    <TouchableOpacity
-                      key={i}
-                      style={styles.phraseChip}
-                      onPress={() => handlePatientSubmit(item.query)}
-                    >
-                      <Text style={styles.phraseChipText}>{item.label}</Text>
-                    </TouchableOpacity>
-                  ))}
+                {/* Real-Time Live Chat Transcript Feed */}
+                <View style={styles.chatSection}>
+                  <Text style={styles.chatSectionTitle}>Real-Time Transcript (Voice-to-Text & Text-to-Voice)</Text>
+                  <ScrollView
+                    ref={chatScrollRef}
+                    style={styles.chatScroll}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {transcript.map((msg, index) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.chatBubble,
+                          msg.sender === 'ai' ? styles.aiBubble : styles.patientBubble,
+                        ]}
+                      >
+                        <View style={styles.chatBubbleHeader}>
+                          <Text style={styles.chatSenderLabel}>
+                            {msg.sender === 'ai' ? '🤖 G-ONE ResQ Dispatcher' : '👤 You'}
+                          </Text>
+                          <Text style={styles.chatTimeLabel}>{msg.time}</Text>
+                        </View>
+                        <Text style={styles.chatBubbleText}>{msg.text}</Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                {/* Quick Symptom Chips for 1-Tap Trigger */}
+                <View style={styles.quickChipsSection}>
+                  <Text style={styles.quickChipsLabel}>1-Tap Quick Symptoms (Or just speak):</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+                    {[
+                      'Chest pain & sweating',
+                      'Severe heavy bleeding',
+                      'Difficulty breathing',
+                      'Person is unconscious',
+                      'Choking on food',
+                      'Burned by fire/oil',
+                      'Fall with broken bone',
+                    ].map((symptom, i) => (
+                      <TouchableOpacity
+                        key={i}
+                        style={styles.chipBtn}
+                        onPress={() => handlePatientSubmit(symptom)}
+                      >
+                        <Text style={styles.chipBtnText}>{symptom}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
                 </View>
               </ScrollView>
 
-              {/* Text Input Row (Fallback for Mic) */}
-              <View style={styles.textInputRow}>
-                <TextInput
-                  style={styles.manualInput}
-                  placeholder="Or type emergency reply..."
-                  placeholderTextColor="#6B7280"
-                  value={manualText}
-                  onChangeText={setManualText}
-                  onSubmitEditing={() => handlePatientSubmit(manualText)}
-                />
-                <TouchableOpacity
-                  style={styles.sendButton}
-                  onPress={() => handlePatientSubmit(manualText)}
-                >
-                  <Send size={16} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
+              {/* Bottom Interactive Bar (Text Input + Call Controls) */}
+              <View style={styles.activeBottomBar}>
+                {/* Manual Text Send Row */}
+                <View style={styles.textInputRow}>
+                  <TextInput
+                    style={styles.manualInput}
+                    placeholder="Type or speak (English, Hindi, Marathi)..."
+                    placeholderTextColor="#64748B"
+                    value={manualText}
+                    onChangeText={setManualText}
+                    onSubmitEditing={() => handlePatientSubmit(manualText)}
+                  />
+                  <TouchableOpacity
+                    style={[styles.sendBtn, !manualText.trim() && styles.sendBtnDisabled]}
+                    onPress={() => handlePatientSubmit(manualText)}
+                    disabled={!manualText.trim()}
+                  >
+                    <Send size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
 
-              {/* Bottom Call Action Buttons */}
-              <View style={styles.callActionBar}>
-                {/* Mic Mute Toggle */}
-                <TouchableOpacity
-                  style={[styles.actionRoundBtn, isMuted && styles.actionActiveBtn]}
-                  onPress={() => {
-                    if (isListening) stopListening();
-                    setIsMuted(!isMuted);
-                  }}
-                >
-                  {isMuted ? (
-                    <MicOff size={22} color="#EF4444" />
-                  ) : (
-                    <Mic size={22} color="#FFFFFF" />
-                  )}
-                  <Text style={styles.actionBtnText}>{isMuted ? 'Muted' : 'Mute'}</Text>
-                </TouchableOpacity>
+                {/* Primary Call Controls */}
+                <View style={styles.callControlsRow}>
+                  {/* Mute */}
+                  <TouchableOpacity
+                    style={[styles.ctrlBtn, isMuted && styles.ctrlBtnMuted]}
+                    onPress={() => {
+                      setIsMuted(!isMuted);
+                      if (!isMuted) stopListening();
+                    }}
+                  >
+                    {isMuted ? <MicOff size={22} color="#EF4444" /> : <Mic size={22} color="#FFFFFF" />}
+                    <Text style={styles.ctrlLabel}>{isMuted ? 'Muted' : 'Mute'}</Text>
+                  </TouchableOpacity>
 
-                {/* Speaker Toggle */}
-                <TouchableOpacity
-                  style={[styles.actionRoundBtn, !isSpeakerOn && styles.actionActiveBtn]}
-                  onPress={() => {
-                    if (isSpeakerOn) stopVoice();
-                    setIsSpeakerOn(!isSpeakerOn);
-                  }}
-                >
-                  {isSpeakerOn ? (
-                    <Volume2 size={22} color="#FFFFFF" />
-                  ) : (
-                    <VolumeX size={22} color="#EF4444" />
-                  )}
-                  <Text style={styles.actionBtnText}>{isSpeakerOn ? 'Speaker' : 'Muted'}</Text>
-                </TouchableOpacity>
+                  {/* Talk / Listen Main Indicator Button */}
+                  <TouchableOpacity
+                    style={[
+                      styles.mainTalkBtn,
+                      isListening && styles.mainTalkBtnListening,
+                      isLoadingAi && styles.mainTalkBtnLoading,
+                    ]}
+                    onPress={() => {
+                      if (isListening) {
+                        stopListening();
+                        if (patientSpeech.trim()) {
+                          handlePatientSubmit(patientSpeech.trim());
+                        }
+                      } else {
+                        startListening();
+                      }
+                    }}
+                  >
+                    {isLoadingAi ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : isListening ? (
+                      <Mic size={26} color="#FFFFFF" />
+                    ) : (
+                      <Mic size={26} color="#FFFFFF" />
+                    )}
+                    <Text style={styles.mainTalkBtnLabel}>
+                      {isLoadingAi ? 'Thinking...' : isListening ? 'Listening...' : 'Tap to Talk'}
+                    </Text>
+                  </TouchableOpacity>
 
-                {/* Push-to-Talk / Listen Button */}
-                <TouchableOpacity
-                  style={[
-                    styles.actionRoundBtn,
-                    isListening && { backgroundColor: '#EF4444' },
-                  ]}
-                  onPress={() => {
-                    if (isListening) stopListening();
-                    else startListening();
-                  }}
-                >
-                  <Mic size={22} color="#FFFFFF" />
-                  <Text style={styles.actionBtnText}>
-                    {isListening ? 'Listening' : 'Talk'}
-                  </Text>
-                </TouchableOpacity>
+                  {/* Speaker Toggle */}
+                  <TouchableOpacity
+                    style={[styles.ctrlBtn, !isSpeakerOn && styles.ctrlBtnOff]}
+                    onPress={() => {
+                      setIsSpeakerOn(!isSpeakerOn);
+                      if (isSpeakerOn) stopVoice();
+                    }}
+                  >
+                    {isSpeakerOn ? <Volume2 size={22} color="#FFFFFF" /> : <VolumeX size={22} color="#EF4444" />}
+                    <Text style={styles.ctrlLabel}>{isSpeakerOn ? 'Speaker' : 'Muted'}</Text>
+                  </TouchableOpacity>
 
-                {/* Big Red End Call Button */}
-                <TouchableOpacity
-                  style={styles.endCallRoundBtn}
-                  onPress={endCall}
-                >
-                  <PhoneOff size={26} color="#FFFFFF" />
-                  <Text style={styles.endCallText}>End Call</Text>
-                </TouchableOpacity>
+                  {/* End Call */}
+                  <TouchableOpacity
+                    style={[styles.ctrlBtn, styles.endCallBtn]}
+                    onPress={endCall}
+                  >
+                    <PhoneOff size={22} color="#FFFFFF" />
+                    <Text style={styles.ctrlLabel}>End</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           )}
 
-          {/* ══════════════════════════════════════════════════════════════════ */}
-          {/* PHASE 3: STRUCTURED HANDOVER CONFIRMATION                         */}
-          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* ════════════════════════════════════════════════════════════════════
+              PHASE 3: STRUCTURED HANDOVER SCREEN
+          ════════════════════════════════════════════════════════════════════ */}
           {phase === 'handover' && (
             <View style={styles.handoverContainer}>
-              <View style={styles.handoverIconCircle}>
-                <CheckCircle2 size={44} color="#10B981" />
-              </View>
-
-              <Text style={styles.handoverTitle}>G-ONE ResQ Handover Completed</Text>
-              <Text style={styles.handoverSubtitle}>
-                Protocol: {protocolTitle}
-              </Text>
-
-              <View style={styles.handoverCard}>
-                <Text style={styles.handoverSectionTitle}>Clinical Dispatch Handover:</Text>
-                <Text style={styles.handoverBodyText}>
-                  {handoverSummary ||
-                    'Emergency voice session saved. Protocol-bound first-aid steps recorded and forwarded to hospital triage.'}
-                </Text>
-              </View>
-
-              <View style={styles.handoverCheckGrid}>
-                <View style={styles.checkItem}>
-                  <CheckCircle2 size={16} color="#10B981" />
-                  <Text style={styles.checkItemText}>GPS Coordinates Locked</Text>
+              <ScrollView contentContainerStyle={styles.handoverContent}>
+                <View style={styles.handoverHeader}>
+                  <CheckCircle2 size={48} color="#10B981" />
+                  <Text style={styles.handoverTitle}>Emergency Handover Generated</Text>
+                  <Text style={styles.handoverSub}>
+                    Hospital ER & dispatched ambulance have received this summary.
+                  </Text>
                 </View>
-                <View style={styles.checkItem}>
-                  <CheckCircle2 size={16} color="#10B981" />
-                  <Text style={styles.checkItemText}>Hospital ER Desk Notified</Text>
-                </View>
-                <View style={styles.checkItem}>
-                  <CheckCircle2 size={16} color="#10B981" />
-                  <Text style={styles.checkItemText}>Transcript Emailed to Contacts</Text>
-                </View>
-              </View>
 
-              <TouchableOpacity
-                style={styles.handoverDoneBtn}
-                onPress={closeHandoverModal}
-              >
-                <Text style={styles.handoverDoneBtnText}>Return to Emergency Live Tracker</Text>
-              </TouchableOpacity>
+                <View style={styles.handoverCard}>
+                  <Text style={styles.handoverSectionTitle}>Patient & Incident Summary</Text>
+                  <Text style={styles.handoverBodyText}>
+                    {handoverSummary || 'Clinical handover is being finalized by dispatch.'}
+                  </Text>
+
+                  <View style={styles.handoverMetaRow}>
+                    <Text style={styles.handoverMetaKey}>Category:</Text>
+                    <Text style={styles.handoverMetaVal}>{category}</Text>
+                  </View>
+                  <View style={styles.handoverMetaRow}>
+                    <Text style={styles.handoverMetaKey}>Urgency:</Text>
+                    <Text style={[styles.handoverMetaVal, { color: '#EF4444' }]}>{severity}</Text>
+                  </View>
+                  <View style={styles.handoverMetaRow}>
+                    <Text style={styles.handoverMetaKey}>Duration:</Text>
+                    <Text style={styles.handoverMetaVal}>{formatTime(callDuration)}</Text>
+                  </View>
+                  <View style={styles.handoverMetaRow}>
+                    <Text style={styles.handoverMetaKey}>Interactions:</Text>
+                    <Text style={styles.handoverMetaVal}>{transcript.length} turns recorded</Text>
+                  </View>
+                </View>
+
+                {/* Handover Transcript Preview */}
+                <View style={styles.transcriptCard}>
+                  <Text style={styles.handoverSectionTitle}>Call Transcript Record</Text>
+                  {transcript.map((msg, i) => (
+                    <Text key={i} style={styles.transcriptLogItem}>
+                      <Text style={{ fontWeight: '700', color: msg.sender === 'ai' ? '#38BDF8' : '#34D399' }}>
+                        {msg.sender === 'ai' ? 'G-ONE: ' : 'Patient: '}
+                      </Text>
+                      {msg.text}
+                    </Text>
+                  ))}
+                </View>
+
+                <TouchableOpacity style={styles.doneBtn} onPress={closeFullModal}>
+                  <Text style={styles.doneBtnText}>Return to Emergency Dashboard</Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
           )}
         </View>
       </Modal>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // Trigger card in emergency.tsx
-  triggerButton: {
-    backgroundColor: '#1E293B',
-    borderColor: '#3B82F6',
-    borderWidth: 1.5,
-    borderRadius: 16,
-    padding: 16,
+  container: {
+    marginVertical: 10,
+  },
+  openCallButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    marginBottom: 20,
-    shadowColor: '#3B82F6',
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    backgroundColor: '#0F172A',
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    shadowColor: '#EF4444',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  triggerPulse: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#2563EB',
-    justifyContent: 'center',
-    alignItems: 'center',
+  btnIcon: {
+    marginRight: 12,
   },
-  triggerTitle: {
-    color: '#FFFFFF',
+  btnTextContainer: {
+    flex: 1,
+  },
+  btnTitle: {
+    color: '#F8FAFC',
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '700',
   },
-  livePill: {
-    backgroundColor: '#10B981',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  livePillText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  triggerSubtitle: {
+  btnSubtitle: {
     color: '#94A3B8',
     fontSize: 12,
     marginTop: 2,
   },
 
-  // Fullscreen Modal Overlay
-  modalOverlay: {
+  // Modal Root
+  modalRoot: {
     flex: 1,
-    backgroundColor: '#090D16',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#0B0F19',
   },
 
-  // ── Ringing Screen Styles ──────────────────────────────────────────────────
+  // Phase 1: Ringing
   ringingContainer: {
-    width: '100%',
     flex: 1,
+    backgroundColor: '#0B0F19',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 60,
     paddingHorizontal: 24,
   },
-  emergencyBanner: {
-    backgroundColor: '#DC2626',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 24,
+  ringingHeader: {
+    alignItems: 'center',
+  },
+  liveIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginBottom: 8,
   },
-  emergencyBannerText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 12,
-    letterSpacing: 1.2,
+  redDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    marginRight: 6,
   },
-  ringingAvatarPulse: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(37, 99, 235, 0.25)',
-    justifyContent: 'center',
+  liveText: {
+    color: '#EF4444',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  callerSub: {
+    color: '#64748B',
+    fontSize: 13,
+  },
+  avatarWrapper: {
     alignItems: 'center',
-    marginVertical: 40,
-  },
-  ringingAvatarInner: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#2563EB',
     justifyContent: 'center',
+  },
+  avatarHalo: {
+    position: 'absolute',
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  avatarCircle: {
+    width: 116,
+    height: 116,
+    borderRadius: 58,
+    backgroundColor: '#1E293B',
+    borderWidth: 2,
+    borderColor: '#EF4444',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  ringingCallerTitle: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '900',
-    textAlign: 'center',
+  callerName: {
+    color: '#F8FAFC',
+    fontSize: 24,
+    fontWeight: '800',
+    marginTop: 18,
   },
-  ringingCallerSubtitle: {
+  callerStatus: {
     color: '#94A3B8',
     fontSize: 14,
-    textAlign: 'center',
-    marginTop: 6,
+    marginTop: 4,
   },
-  gpsAlertBox: {
-    backgroundColor: 'rgba(251, 191, 36, 0.12)',
-    borderColor: '#FBBF24',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 20,
-  },
-  gpsAlertText: {
-    color: '#FDE68A',
+  autoAnswerNotice: {
+    color: '#EF4444',
     fontSize: 12,
-    fontWeight: '600',
+    fontStyle: 'italic',
+    marginTop: 8,
   },
-  callResponseRow: {
+  ringingActions: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     width: '100%',
     paddingHorizontal: 20,
-    marginTop: 40,
   },
-  callBtn: {
+  callActionBtn: {
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    width: 74,
+    height: 74,
+    borderRadius: 37,
   },
   declineBtn: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
     backgroundColor: '#DC2626',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  answerBtn: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: '#16A34A',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#16A34A',
-    shadowOpacity: 0.6,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
+  acceptBtn: {
+    backgroundColor: '#10B981',
   },
-  callBtnLabel: {
-    color: '#E2E8F0',
-    fontSize: 13,
+  actionBtnLabel: {
+    color: '#FFFFFF',
+    fontSize: 11,
     fontWeight: '700',
     marginTop: 4,
   },
 
-  // ── Active Call Screen Styles ──────────────────────────────────────────────
+  // Phase 2: Active Call
   activeCallContainer: {
-    width: '100%',
     flex: 1,
-    paddingTop: Platform.OS === 'ios' ? 50 : 36,
-    paddingHorizontal: 20,
-    justifyContent: 'space-between',
+    backgroundColor: '#0B0F19',
   },
-  topCallHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  timerBadge: {
+  activeTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 52 : 36,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
   },
-  greenLiveDot: {
+  activeCallerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  activeDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#10B981',
-  },
-  timerText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 13,
-  },
-  langToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderColor: '#3B82F6',
-    borderWidth: 1,
-  },
-  langToggleText: {
-    color: '#93C5FD',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  callerHeader: {
-    alignItems: 'center',
-    marginTop: 14,
+    marginRight: 6,
   },
   activeCallerName: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '900',
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: '700',
   },
-  severityBadge: {
+  timerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#2563EB',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 14,
-    marginTop: 6,
+    marginTop: 2,
   },
-  badgeCritical: {
-    backgroundColor: '#DC2626',
+  callTimerText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginLeft: 4,
+    marginRight: 8,
   },
-  badgeHigh: {
-    backgroundColor: '#D97706',
+  severityChip: {
+    backgroundColor: 'rgba(239, 68, 68, 0.25)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
   },
-  severityBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
+  severityChipText: {
+    color: '#EF4444',
+    fontSize: 10,
     fontWeight: '800',
-    textTransform: 'uppercase',
+  },
+  langPills: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  langPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  langPillActive: {
+    backgroundColor: '#EF4444',
+    borderColor: '#EF4444',
+  },
+  langPillText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  langPillTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 
-  // Sound Wave Visualizer
-  soundWaveRow: {
+  // Hands-Free Switch Bar
+  handsFreeBar: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#1E293B',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  handsFreeBarActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+  },
+  handsFreeText: {
+    flex: 1,
+    color: '#94A3B8',
+    fontSize: 12,
+    marginLeft: 8,
+  },
+  handsFreeTextActive: {
+    color: '#10B981',
+    fontWeight: '600',
+  },
+  toggleDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#64748B',
+  },
+  toggleDotActive: {
+    backgroundColor: '#10B981',
+  },
+
+  // Scroll Area
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 20,
+  },
+
+  // Spoken AI Card
+  aiSpeakingCard: {
+    backgroundColor: '#131C31',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    padding: 16,
+    marginBottom: 14,
+  },
+  aiHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  protocolBadge: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 6,
+    textTransform: 'uppercase',
+  },
+  waveVisualizerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    height: 56,
-    marginVertical: 10,
+    height: 44,
+    marginVertical: 4,
   },
   waveBar: {
     width: 6,
+    backgroundColor: '#EF4444',
     borderRadius: 3,
-    backgroundColor: '#3B82F6',
   },
-  waveBarCenter: {
-    backgroundColor: '#60A5FA',
-    width: 8,
-  },
-
-  // Scroll Content
-  callContentScroll: {
-    flex: 1,
-  },
-  aiSpeechCard: {
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-  },
-  aiSpeakerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  aiSpeakerLabel: {
-    color: '#60A5FA',
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  aiSpeechContent: {
+  currentSpeechText: {
     color: '#F8FAFC',
     fontSize: 15,
     lineHeight: 22,
     fontWeight: '500',
+    marginTop: 8,
   },
-  listeningBox: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderColor: '#EF4444',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 10,
+  listeningSubtitleBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 10,
   },
-  listeningText: {
-    color: '#FCA5A5',
+  listeningSubtitleText: {
+    color: '#10B981',
     fontSize: 13,
     fontWeight: '600',
+    marginLeft: 6,
   },
 
-  // First Aid Protocol Card
-  protocolCard: {
-    backgroundColor: '#111827',
-    borderColor: '#1F2937',
+  // Ambulance Pre-Hospital Card
+  ambulanceCard: {
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    padding: 16,
+    marginBottom: 14,
+  },
+  ambulanceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  ambulanceTitleCol: {
+    marginLeft: 10,
+  },
+  ambulanceTitle: {
+    color: '#F59E0B',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  ambulanceSubtitle: {
+    color: '#D97706',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  ambulanceStepList: {
+    gap: 8,
+  },
+  ambulanceStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#1E293B',
+    padding: 10,
+    borderRadius: 10,
+  },
+  ambulanceStepRowDone: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+  },
+  ambulanceStepText: {
+    flex: 1,
+    color: '#F1F5F9',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  // Protocol Checklist Card
+  protocolChecklistCard: {
+    backgroundColor: '#131C31',
+    borderRadius: 16,
     borderWidth: 1,
-    borderRadius: 14,
+    borderColor: '#1E293B',
+    padding: 16,
+    marginBottom: 14,
+  },
+  cardHeaderTitle: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  cardHeaderSubtitle: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  stepItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  stepItemCompleted: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+  },
+  stepText: {
+    flex: 1,
+    color: '#CBD5E1',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  stepTextCompleted: {
+    color: '#64748B',
+    textDecorationLine: 'line-through',
+  },
+
+  // Real-Time Transcript Chat Feed
+  chatSection: {
+    backgroundColor: '#131C31',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
     padding: 14,
     marginBottom: 14,
   },
-  protocolCardTitle: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
-  protocolStepRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingVertical: 6,
-  },
-  stepRowDone: {
-    opacity: 0.6,
-  },
-  protocolStepText: {
-    color: '#E5E7EB',
-    fontSize: 13,
-    lineHeight: 18,
-    flex: 1,
-  },
-  stepTextDone: {
-    textDecorationLine: 'line-through',
-    color: '#9CA3AF',
-  },
-
-  // Quick symptom phrases
-  quickPhrasesTitle: {
+  chatSectionTitle: {
     color: '#94A3B8',
     fontSize: 12,
     fontWeight: '700',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
+  chatScroll: {
+    maxHeight: 190,
+  },
+  chatBubble: {
+    padding: 10,
+    borderRadius: 12,
     marginBottom: 8,
+    maxWidth: '90%',
   },
-  quickPhrasesWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  phraseChip: {
+  aiBubble: {
     backgroundColor: '#1E293B',
-    borderColor: '#3B82F6',
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 14,
+    alignSelf: 'flex-start',
+    borderLeftWidth: 3,
+    borderLeftColor: '#EF4444',
   },
-  phraseChipText: {
-    color: '#93C5FD',
-    fontSize: 12,
-    fontWeight: '700',
+  patientBubble: {
+    backgroundColor: '#0F766E',
+    alignSelf: 'flex-end',
   },
-
-  // Text input fallback
-  textInputRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginVertical: 8,
-  },
-  manualInput: {
-    flex: 1,
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    color: '#FFFFFF',
-    fontSize: 13,
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#2563EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // Bottom action bar
-  callActionBar: {
+  chatBubbleHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#1E293B',
+    marginBottom: 4,
   },
-  actionRoundBtn: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#1E293B',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 3,
-  },
-  actionActiveBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
-    borderColor: '#EF4444',
-    borderWidth: 1.5,
-  },
-  actionBtnText: {
+  chatSenderLabel: {
     color: '#94A3B8',
     fontSize: 10,
     fontWeight: '700',
   },
-  endCallRoundBtn: {
-    width: 80,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#DC2626',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 2,
-    shadowColor: '#DC2626',
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+  chatTimeLabel: {
+    color: '#64748B',
+    fontSize: 9,
+    marginLeft: 8,
   },
-  endCallText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
+  chatBubbleText: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    lineHeight: 18,
   },
 
-  // ── Handover Screen Styles ─────────────────────────────────────────────────
-  handoverContainer: {
-    width: '100%',
+  // Quick Chips
+  quickChipsSection: {
+    marginBottom: 8,
+  },
+  quickChipsLabel: {
+    color: '#64748B',
+    fontSize: 11,
+    marginBottom: 6,
+  },
+  chipRow: {
+    flexDirection: 'row',
+  },
+  chipBtn: {
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  chipBtnText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+  },
+
+  // Active Bottom Bar
+  activeBottomBar: {
+    backgroundColor: '#0F172A',
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 14,
+  },
+  textInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  manualInput: {
     flex: 1,
-    padding: 24,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    color: '#F8FAFC',
+    fontSize: 13,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  sendBtn: {
+    backgroundColor: '#EF4444',
+    padding: 10,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  sendBtnDisabled: {
+    opacity: 0.4,
+  },
+  callControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 6,
+  },
+  ctrlBtn: {
+    alignItems: 'center',
     justifyContent: 'center',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#1E293B',
+  },
+  ctrlBtnMuted: {
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+  },
+  ctrlBtnOff: {
+    backgroundColor: '#334155',
+  },
+  ctrlLabel: {
+    color: '#94A3B8',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  mainTalkBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#EF4444',
+    flexDirection: 'row',
+    gap: 8,
+    shadowColor: '#EF4444',
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  mainTalkBtnListening: {
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
+  },
+  mainTalkBtnLoading: {
+    backgroundColor: '#6366F1',
+  },
+  mainTalkBtnLabel: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  endCallBtn: {
+    backgroundColor: '#DC2626',
+  },
+
+  // Phase 3: Handover
+  handoverContainer: {
+    flex: 1,
+    backgroundColor: '#0B0F19',
+  },
+  handoverContent: {
+    padding: 24,
+    paddingTop: 48,
     alignItems: 'center',
   },
-  handoverIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    justifyContent: 'center',
+  handoverHeader: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
   },
   handoverTitle: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
+    color: '#F8FAFC',
+    fontSize: 20,
+    fontWeight: '800',
+    marginTop: 12,
     textAlign: 'center',
   },
-  handoverSubtitle: {
-    color: '#60A5FA',
-    fontSize: 14,
-    fontWeight: '700',
+  handoverSub: {
+    color: '#94A3B8',
+    fontSize: 13,
     marginTop: 4,
-    marginBottom: 20,
+    textAlign: 'center',
   },
   handoverCard: {
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
+    backgroundColor: '#131C31',
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    padding: 18,
+    width: '100%',
+    marginBottom: 16,
+  },
+  handoverSectionTitle: {
+    color: '#38BDF8',
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  handoverBodyText: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 14,
+  },
+  handoverMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+  },
+  handoverMetaKey: {
+    color: '#94A3B8',
+    fontSize: 13,
+  },
+  handoverMetaVal: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  transcriptCard: {
+    backgroundColor: '#131C31',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
     padding: 16,
     width: '100%',
     marginBottom: 20,
   },
-  handoverSectionTitle: {
-    color: '#94A3B8',
+  transcriptLogItem: {
+    color: '#CBD5E1',
     fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
+    lineHeight: 18,
     marginBottom: 6,
   },
-  handoverBodyText: {
-    color: '#F8FAFC',
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  handoverCheckGrid: {
-    width: '100%',
-    gap: 10,
-    marginBottom: 30,
-  },
-  checkItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  checkItemText: {
-    color: '#E2E8F0',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  handoverDoneBtn: {
-    width: '100%',
-    backgroundColor: '#2563EB',
-    paddingVertical: 16,
+  doneBtn: {
+    backgroundColor: '#10B981',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
     borderRadius: 14,
+    width: '100%',
     alignItems: 'center',
   },
-  handoverDoneBtnText: {
+  doneBtnText: {
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '700',
   },
 });
