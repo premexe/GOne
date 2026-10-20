@@ -434,6 +434,7 @@ async def resq_turn(
     speech = str(payload.get("speech") or payload.get("text") or "").strip()
     turn = int(payload.get("turn") or 1)
     lang = payload.get("lang")
+    conversation_history = payload.get("history")  # Full chat transcript from frontend
 
     if not speech:
         speech = "I need help right now."
@@ -444,6 +445,7 @@ async def resq_turn(
         user_speech=speech,
         turn_number=turn,
         language_preference=lang,
+        conversation_history=conversation_history,
     )
     return JSONResponse({"success": True, **result})
 

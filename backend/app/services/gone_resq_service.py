@@ -358,6 +358,13 @@ class GoneResqService:
     Voice-first emergency response orchestrator.
     Adheres strictly to the G-ONE ResQ Architecture:
     Protocol Engine -> LLM Provider Manager -> Safety Validator -> Handover.
+
+    This service provides REAL-TIME, CONTEXT-AWARE diagnostic conversation.
+    Each turn receives the full conversation history so the AI can:
+    - Understand the evolving situation dynamically
+    - Ask targeted follow-up diagnostic questions
+    - Give precise, situation-specific instructions
+    - Guide step-by-step until ambulance arrives
     """
 
     @staticmethod
@@ -367,17 +374,14 @@ class GoneResqService:
         user_speech: str,
         turn_number: int = 1,
         language_preference: Optional[str] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
         """
         Process a spoken or text turn from the patient during an active emergency call.
-        Returns:
-          - voice_response: Text for TTS voice output (1-2 sentences)
-          - category: Emergency category
-          - severity: Urgency level
-          - protocol_title: Protocol name
-          - first_aid_steps: List of authoritative actions for UI display
-          - till_ambulance_arrives: Pre-hospital survival actions
-          - is_final: Boolean indicating whether call goals have been fulfilled
+        
+        NOW with full multi-turn conversation history for contextual diagnosis.
+        The AI analyzes the patient's evolving narrative and responds with
+        targeted, situation-specific emergency guidance — not generic greetings.
         """
         sos: Optional[SOS] = db.query(SOS).filter(SOS.sos_id == sos_id).first() if sos_id else None
 
@@ -391,6 +395,8 @@ class GoneResqService:
                 "blood_group": "Unknown",
                 "allergies": "None reported",
                 "chronic_conditions": "None recorded",
+                "medications": "None recorded",
+                "notes": "",
             }
             desc = ""
 
@@ -400,14 +406,31 @@ class GoneResqService:
         # 3. Detect Language (en / hi / mr)
         lang_code = _detect_language(user_speech, language_preference)
 
-        # 4. LLM Generation with Fallback (Gemini -> Deterministic Protocol)
+        # 4. Build conversation history string from frontend + DB transcript
+        history_text = ""
+        if conversation_history and len(conversation_history) > 0:
+            # Use the frontend-supplied conversation history (most reliable, real-time)
+            history_lines = []
+            for msg in conversation_history[-12:]:  # Last 12 messages for context window
+                role = msg.get("sender", msg.get("role", "patient"))
+                text = msg.get("text", msg.get("content", ""))
+                if role in ("ai", "assistant", "resq"):
+                    history_lines.append(f"G-ONE ResQ: {text}")
+                else:
+                    history_lines.append(f"Patient: {text}")
+            history_text = "\n".join(history_lines)
+        elif sos and sos.call_transcript:
+            # Fallback: use DB-stored transcript
+            history_text = sos.call_transcript[-2000:]  # Last ~2000 chars
+
+        # 5. LLM Generation with Fallback (Gemini -> Deterministic Protocol)
         voice_text = ""
         used_provider = "deterministic"
 
         lang_instructions = {
-            "mr": "Natural empathetic Marathi (मराठी). Clear spoken Marathi or Romanized Marathi so it sounds natural when read aloud.",
-            "hi": "Natural reassuring Hindi or Hinglish. Clear spoken Hindi.",
-            "en": "Clear, calm, reassuring English."
+            "mr": "Respond in natural empathetic Marathi (मराठी). Use clear spoken Marathi or Romanized Marathi that sounds natural when read aloud by text-to-speech. Do NOT mix English unless the patient used English words.",
+            "hi": "Respond in natural reassuring Hindi or Hinglish. Use clear spoken Hindi that flows naturally. Match the patient's speaking style.",
+            "en": "Respond in clear, calm, reassuring English. Use simple direct language."
         }
 
         if GEMINI_API_KEY:
@@ -415,57 +438,141 @@ class GoneResqService:
                 from google import genai
                 client = genai.Client(api_key=GEMINI_API_KEY)
 
-                prompt = f"""You are G-ONE ResQ, an authoritative voice-first emergency response companion.
-The patient is on an active emergency call after pressing SOS.
+                # ── Build the real-time diagnostic system prompt ──
+                system_prompt = f"""You are G-ONE ResQ — a REAL-TIME emergency medical voice companion actively guiding a patient through a live emergency situation. An ambulance has been dispatched to their GPS location.
 
-PATIENT CONTEXT:
+YOUR ROLE: You are an emergency diagnostician on a live voice call. You must ACTIVELY ANALYZE what the patient tells you and respond with SPECIFIC, IMMEDIATE actions for THEIR EXACT situation — not generic advice.
+
+PATIENT MEDICAL PROFILE:
 - Name: {patient_ctx['patient_name']}
 - Blood Group: {patient_ctx['blood_group']}
-- Allergies: {patient_ctx['allergies']}
+- Known Allergies: {patient_ctx['allergies']}
 - Chronic Conditions: {patient_ctx['chronic_conditions']}
+- Current Medications: {patient_ctx.get('medications', 'None recorded')}
+{f"- Special Notes: {patient_ctx.get('notes', '')}" if patient_ctx.get('notes') else ""}
 
-EMERGENCY SITUATION:
-- Detected Category: {protocol['title']} (Severity: {protocol['severity']})
-- Clinical Protocol Steps:
-{chr(10).join(f"- {step}" for step in protocol['first_aid_steps'][:3])}
-- Pre-Hospital Guidelines (Till Ambulance Arrives):
-{chr(10).join(f"- {act}" for act in protocol['till_ambulance_arrives'][:2])}
+DETECTED EMERGENCY CATEGORY: {protocol['title']} (Severity: {protocol['severity']})
 
-PATIENT JUST SAID: "{user_speech}"
-CALL TURN: {turn_number}
-TARGET LANGUAGE: {lang_instructions.get(lang_code, 'English')}
+CLINICAL PROTOCOL REFERENCE (use these as your medical knowledge base):
+First Aid Steps:
+{chr(10).join(f"  {i+1}. {step}" for i, step in enumerate(protocol['first_aid_steps']))}
 
-CRITICAL RULES:
-1. Speak 1 to 2 short sentences ALOUD (maximum 30 words). Never use bullet points, asterisks, or markdown.
-2. Reassure that local responders have their GPS coordinates and ambulance is on the way.
-3. Deliver the single most urgent first-aid action from the protocol above.
-4. If they have allergies/conditions, account for them.
-5. Tone: Calm, warm, firm, life-saving.
-"""
+Pre-Hospital Actions (Till Ambulance Arrives):
+{chr(10).join(f"  {i+1}. {act}" for i, act in enumerate(protocol['till_ambulance_arrives']))}
+
+CONVERSATION TURN: {turn_number}
+RESPONSE LANGUAGE: {lang_instructions.get(lang_code, lang_instructions['en'])}
+
+═══ CRITICAL BEHAVIORAL RULES ═══
+
+1. ANALYZE THE PATIENT'S EXACT WORDS and respond to THEIR specific situation.
+   - If they say "chest pain and sweating" → guide them specifically for cardiac symptoms with sweating (possible heart attack).
+   - If they say "mala shvas gheta yet nahi" → immediately guide positioning and breathing technique in Marathi.
+   - If they say "khoon nikal raha hai" → ask WHERE exactly, HOW MUCH, and guide wound pressure.
+   - NEVER give a generic "help is coming" without actionable guidance.
+
+2. EVERY response MUST contain:
+   a) ONE specific diagnostic question about their current state (to understand severity changes)
+   b) ONE immediate action they should do RIGHT NOW
+   c) Brief reassurance that ambulance is tracking their GPS
+
+3. RESPONSE FORMAT:
+   - Speak 2-4 natural sentences (40-80 words maximum).
+   - Use spoken conversational tone — this will be read aloud by text-to-speech.
+   - NEVER use bullet points, asterisks, numbered lists, markdown, or special characters.
+   - NEVER use emojis or formatting symbols.
+
+4. PROGRESSIVE DIAGNOSIS:
+   - Turn 1-2: Identify the emergency, assess consciousness/breathing, give first critical action.
+   - Turn 3-4: Assess response to actions, check for deterioration, adjust guidance.
+   - Turn 5+: Monitor status, provide comfort actions, prepare for ambulance arrival.
+
+5. PATIENT SAFETY:
+   - If patient mentions allergies to Aspirin → DO NOT suggest Aspirin.
+   - If patient is diabetic → account for blood sugar issues.
+   - If patient is on blood thinners → modify bleeding advice.
+   - NEVER suggest medications you're unsure about.
+   - If situation sounds life-threatening, instruct CPR positioning immediately.
+
+6. ACCOUNT FOR CHRONIC CONDITIONS: If the patient has {patient_ctx['chronic_conditions']}, factor this into every recommendation."""
+
+                # ── Build the conversation messages for multi-turn context ──
+                messages_for_gemini = system_prompt + "\n\n"
+
+                if history_text:
+                    messages_for_gemini += f"═══ CONVERSATION SO FAR ═══\n{history_text}\n\n"
+
+                messages_for_gemini += f"═══ PATIENT'S LATEST MESSAGE ═══\nPatient: \"{user_speech}\"\n\nRespond now as G-ONE ResQ with your next diagnostic response. Remember: analyze their words, give a specific action, ask a follow-up question. Speak naturally in {lang_instructions.get(lang_code, 'English')}."
+
                 try:
                     resp = client.models.generate_content(
                         model="gemini-2.5-flash",
-                        contents=prompt,
+                        contents=messages_for_gemini,
                     )
                 except Exception:
-                    resp = client.models.generate_content(
-                        model="gemini-1.5-flash",
-                        contents=prompt,
-                    )
+                    try:
+                        resp = client.models.generate_content(
+                            model="gemini-2.0-flash",
+                            contents=messages_for_gemini,
+                        )
+                    except Exception:
+                        resp = client.models.generate_content(
+                            model="gemini-1.5-flash",
+                            contents=messages_for_gemini,
+                        )
 
-                candidate = resp.text.strip().replace("*", "").replace("#", "")
-                if candidate and len(candidate) > 8:
+                candidate = resp.text.strip()
+                # Clean any markdown/formatting that might slip through
+                candidate = candidate.replace("*", "").replace("#", "").replace("- ", "").replace("•", "")
+                candidate = re.sub(r'\d+\.\s', '', candidate)  # Remove numbered list markers
+                candidate = re.sub(r'\n+', ' ', candidate).strip()  # Collapse to single spoken line
+
+                if candidate and len(candidate) > 10:
                     voice_text = candidate
                     used_provider = "gemini-2.5-flash"
             except Exception as e:
                 logger.warning("ResQ Gemini generation fallback: %s", e)
 
-        # Deterministic Protocol Fallback
+        # Deterministic Protocol Fallback — make it situation-aware too
         if not voice_text:
-            voice_text = protocol["default_voice_response"].get(lang_code, protocol["default_voice_response"]["en"])
+            base_response = protocol["default_voice_response"].get(lang_code, protocol["default_voice_response"]["en"])
+            # On later turns, append a follow-up question to make it feel interactive
+            if turn_number > 1:
+                follow_ups = {
+                    "en": {
+                        "CARDIAC": "Are you feeling any dizziness or nausea right now? Is the pain getting worse or staying the same?",
+                        "SEVERE_BLEEDING": "Is the bleeding slowing down with pressure? Can you describe the wound size?",
+                        "BREATHING_DIFFICULTY": "Can you count to five out loud for me? Is your breathing getting better or worse?",
+                        "CHOKING": "Can you make any coughing sound? Is the person turning blue?",
+                        "UNCONSCIOUS": "Is the chest moving up and down? Can you feel a pulse on their neck?",
+                        "STROKE_NEURO": "Can they squeeze both your hands equally? Is one side of the face drooping?",
+                        "BURNS": "How large is the burned area? Is the skin blistered or charred?",
+                        "TRAUMA_FRACTURE": "Can they feel and wiggle their fingers and toes? Is there any bone visible?",
+                        "GENERAL": "Tell me exactly what symptoms you are experiencing right now. Has anything changed?"
+                    },
+                    "hi": {
+                        "CARDIAC": "Kya abhi chakkar ya ulti jaisa lag raha hai? Dard badh raha hai ya wahi hai?",
+                        "SEVERE_BLEEDING": "Kya dabaav se khoon kam ho raha hai? Ghaav kitna bada hai?",
+                        "BREATHING_DIFFICULTY": "Kya aap abhi 1 se 5 tak gin sakte hain? Saans behtar ho rahi hai ya aur mushkil?",
+                        "GENERAL": "Abhi bilkul kya ho raha hai batayein. Koi naya lakshan hai?"
+                    },
+                    "mr": {
+                        "CARDIAC": "आत्ता चक्कर किंवा मळमळ होतेय का? दुखणे वाढतेय की तसेच आहे?",
+                        "BREATHING_DIFFICULTY": "तुम्ही आत्ता एक ते पाच मोजू शकता का? श्वास सुधारतोय की आणखी कठीण होतोय?",
+                        "GENERAL": "आत्ता नेमके काय होतेय ते सांगा. काही नवीन लक्षण दिसतेय का?"
+                    }
+                }
+                lang_followups = follow_ups.get(lang_code, follow_ups["en"])
+                followup = lang_followups.get(category, lang_followups.get("GENERAL", ""))
+                if followup:
+                    voice_text = f"{base_response} {followup}"
+                else:
+                    voice_text = base_response
+            else:
+                voice_text = base_response
             used_provider = "deterministic_protocol"
 
-        # 5. Append to Transcript
+        # 6. Append to Transcript in DB
         if sos:
             current_transcript = sos.call_transcript or ""
             new_turn_str = f"Patient: {user_speech.strip()}\nG-ONE ResQ: {voice_text.strip()}"
@@ -478,7 +585,8 @@ CRITICAL RULES:
             sos.call_status = "IN_PROGRESS"
             db.commit()
 
-        is_final = turn_number >= 5
+        # Never mark as final — continuous assistance until ambulance arrives or user ends call
+        is_final = False
 
         return {
             "voice_response": voice_text,

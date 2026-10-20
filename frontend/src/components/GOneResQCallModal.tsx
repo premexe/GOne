@@ -103,6 +103,7 @@ export function GOneResQCallModal({
   const isMutedRef = useRef<boolean>(false);
   const isLoadingAiRef = useRef<boolean>(false);
   const chatScrollRef = useRef<ScrollView | null>(null);
+  const transcriptRef = useRef<Array<{ sender: 'ai' | 'patient'; text: string; time: string }>>([]);
 
   // Sync refs with state
   useEffect(() => {
@@ -390,6 +391,7 @@ export function GOneResQCallModal({
           speech: emergencyDescription || 'Emergency SOS initiated. Patient needs assistance.',
           turn: 1,
           lang: curLang,
+          history: [],  // No history on first turn
         }),
       });
 
@@ -402,9 +404,9 @@ export function GOneResQCallModal({
 
         if (resp.voice_response) {
           setCurrentAiSpeech(resp.voice_response);
-          setTranscript([
-            { sender: 'ai', text: resp.voice_response, time: nowStamp() },
-          ]);
+          const initialTranscript = [{ sender: 'ai' as const, text: resp.voice_response, time: nowStamp() }];
+          setTranscript(initialTranscript);
+          transcriptRef.current = initialTranscript;
           speakVoice(resp.voice_response, () => {
             // Automatically listen after AI finishes speaking (Hands-Free!)
             if (isHandsFreeRef.current) {
@@ -440,7 +442,12 @@ export function GOneResQCallModal({
     const textToSend = userText.trim();
     setPatientSpeech('');
     setManualText('');
-    setTranscript((prev) => [...prev, { sender: 'patient', text: textToSend, time: nowStamp() }]);
+
+    // Build updated transcript with patient's new message
+    const patientMsg = { sender: 'patient' as const, text: textToSend, time: nowStamp() };
+    const updatedTranscript = [...transcriptRef.current, patientMsg];
+    transcriptRef.current = updatedTranscript;
+    setTranscript(updatedTranscript);
     setIsLoadingAi(true);
 
     const nextTurn = turn + 1;
@@ -451,6 +458,12 @@ export function GOneResQCallModal({
       chatScrollRef.current?.scrollToEnd({ animated: true });
     }, 100);
 
+    // Build conversation history for Gemini multi-turn context
+    const historyForBackend = updatedTranscript.map((msg) => ({
+      sender: msg.sender,
+      text: msg.text,
+    }));
+
     try {
       const resp = await request('/voice/resq/turn', {
         method: 'POST',
@@ -459,6 +472,7 @@ export function GOneResQCallModal({
           speech: textToSend,
           turn: nextTurn,
           lang: languageRef.current,
+          history: historyForBackend,  // Full conversation context for AI
         }),
       });
 
@@ -470,10 +484,10 @@ export function GOneResQCallModal({
         if (resp.till_ambulance_arrives?.length) setTillAmbulanceArrives(resp.till_ambulance_arrives);
 
         setCurrentAiSpeech(resp.voice_response);
-        setTranscript((prev) => [
-          ...prev,
-          { sender: 'ai', text: resp.voice_response, time: nowStamp() },
-        ]);
+        const aiMsg = { sender: 'ai' as const, text: resp.voice_response, time: nowStamp() };
+        const newTranscript = [...transcriptRef.current, aiMsg];
+        transcriptRef.current = newTranscript;
+        setTranscript(newTranscript);
 
         setTimeout(() => {
           chatScrollRef.current?.scrollToEnd({ animated: true });
