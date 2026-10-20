@@ -43,6 +43,7 @@ export default function RootLayout() {
               animation: 'fade',
             }}
           />
+          <Stack.Screen name="sos/resq" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
         </Stack>
       </KeyboardAvoidingView>
     </SafeAreaProvider>

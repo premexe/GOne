@@ -1,0 +1,21 @@
+{
+  "emergency_type": "severe_bleeding",
+  "severity": "critical",
+  "escalation_condition": "Continuous arterial spurting, pooling blood, lightheadedness, or bleeding unchecked after 3 minutes",
+  "source": "Red Cross & AHA First Aid Guidelines for Hemorrhage Control",
+  "approved_actions": [
+    "Apply continuous, firm direct pressure directly over the wound with a clean cloth or sterile gauze.",
+    "Do not remove the cloth if it soaks through; stack more layers on top and press harder.",
+    "Help the patient sit or lie down flat immediately to prevent fainting or injury.",
+    "Keep the injured person warm with a blanket or jacket.",
+    "Do not apply an improvised tourniquet unless trained and blood is actively spurting."
+  ],
+  "critical_actions": [
+    "Maintain relentless direct pressure without lifting the cloth to check the wound.",
+    "Keep patient lying down."
+  ],
+  "contraindications": [
+    "Never remove embedded objects or knives; stabilize them in place.",
+    "Never administer aspirin or blood thinners."
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "emergency_type": "burns",
+  "severity": "moderate",
+  "escalation_condition": "Burns covering face, hands, joints, large areas, or charred/white skin",
+  "source": "ISBI / American Burn Association First Aid",
+  "approved_actions": [
+    "Immediately cool the burn under cool, gentle running tap water for at least 10 to 20 minutes.",
+    "Gently remove jewelry, rings, or tight clothing around burned area before swelling starts.",
+    "Cover the burn loosely with clean, non-stick sterile gauze or clean plastic cling wrap.",
+    "Keep the person comfortably warm to avoid hypothermia while cooling large burns.",
+    "Protect blistered areas without disturbing the skin."
+  ],
+  "critical_actions": [
+    "Cool with clean water for at least 10 minutes.",
+    "Cover loosely with a clean, dry dressing."
+  ],
+  "contraindications": [
+    "Never apply ice, ice water, butter, oil, or toothpaste to a burn.",
+    "Never pop or puncture burn blisters."
+  ]
+}

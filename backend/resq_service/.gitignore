@@ -1,0 +1,20 @@
+# Create .gitignore
+@"
+# Environment variables and secrets
+.env
+*.env
+
+# Python artifacts
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# OS / Editor files
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+"@ | Out-File -FilePath .gitignore -Encoding utf8

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>G-ONE ResQ | Emergency Companion</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <span class="pulsing-badge"></span>
+        <h1>G-ONE <span>ResQ</span></h1>
+      </div>
+      <div class="patient-selector">
+        <label for="patientSelect">Patient Profile:</label>
+        <select id="patientSelect">
+          <option value="PAT-101">Aarav Sharma (48y, B+, HTN, Diabetic)</option>
+          <option value="PAT-102">Priya Patel (24y, O+, Asthmatic)</option>
+          <option value="PAT-103">Ramesh Verma (67y, A+, CAD/Stent)</option>
+        </select>
+      </div>
+      <div class="patient-selector">
+        <label for="speechLanguage">Speech input:</label>
+        <select id="speechLanguage" aria-label="Speech input language">
+          <option value="auto">Auto (Indian device)</option>
+          <option value="en-IN">English</option>
+          <option value="hi-IN">Hindi / Hinglish</option>
+        </select>
+      </div>
+    </header>
+
+    <!-- Status Grid -->
+    <div class="status-grid">
+      <div class="card status-card">
+        <span class="label">Emergency Classification</span>
+        <div id="emergencyType" class="value">Awaiting Audio...</div>
+      </div>
+      <div class="card status-card">
+        <span class="label">Triage Severity</span>
+        <div id="severityLevel" class="value badge-moderate">MODERATE</div>
+      </div>
+      <div class="card status-card">
+        <span class="label">Language Detected</span>
+        <div id="detectedLanguage" class="value">EN / HI</div>
+      </div>
+      <div class="card status-card">
+        <span class="label">Hospital Handover</span>
+        <div id="handoverStatus" class="value badge-idle">STANDBY</div>
+      </div>
+    </div>
+
+    <!-- Live Conversation Surface -->
+    <div class="conversation-panel card">
+      <div class="panel-header">
+        <h2>Live Emergency Dispatch Feed</h2>
+        <span id="providerBadge" class="sub-badge">Engine: Standby</span>
+      </div>
+      <div id="chatFeed" class="chat-feed">
+        <div class="msg assistant">
+          <div class="avatar">RN</div>
+          <div class="bubble">G-ONE ResQ is ready. Tap 'Start Emergency Voice Call' and speak in English, Hindi, or Hinglish.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Voice Control Bar -->
+    <div class="control-bar">
+      <button id="callBtn" class="call-button start">
+        <div class="mic-icon">🎙️</div>
+        <span id="callBtnLabel">Start Emergency Call</span>
+      </button>
+
+      <div class="input-fallback">
+        <input type="text" id="manualInput" placeholder="Or type emergency here (e.g. Seene me bohot tez dard ho raha hai)..." />
+        <button id="sendTextBtn">Send</button>
+      </div>
+    </div>
+
+    <!-- Patient Context Tray -->
+    <div class="patient-summary card" id="patientTray">
+      <h3>Active Patient File</h3>
+      <div class="info-row"><span class="k">Allergies:</span> <span id="pAllergies" class="v">Loading...</span></div>
+      <div class="info-row"><span class="k">Conditions:</span> <span id="pConditions" class="v">Loading...</span></div>
+      <div class="info-row"><span class="k">Medications:</span> <span id="pMeds" class="v">Loading...</span></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

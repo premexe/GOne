@@ -1,0 +1,219 @@
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #30363d;
+  --text: #f0f6fc;
+  --subtext: #8b949e;
+  --red: #f85149;
+  --orange: #d29922;
+  --green: #2ea043;
+  --blue: #58a6ff;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.app-container {
+  width: 100%;
+  max-width: 960px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.brand h1 span { color: var(--red); }
+
+.pulsing-badge {
+  width: 14px;
+  height: 14px;
+  background-color: var(--red);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--red);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(248, 81, 73, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(248, 81, 73, 0); }
+}
+
+.patient-selector select {
+  background: #21262d;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 6px;
+  outline: none;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.status-card .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--subtext);
+  font-weight: 600;
+}
+
+.status-card .value {
+  font-size: 17px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.badge-moderate { color: var(--orange); }
+.badge-critical { color: var(--red); text-shadow: 0 0 8px rgba(248, 81, 73, 0.4); }
+.badge-dispatched { color: var(--green); }
+.badge-idle { color: var(--subtext); }
+
+.conversation-panel {
+  display: flex;
+  flex-direction: column;
+  height: 380px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.panel-header h2 { font-size: 15px; color: var(--subtext); }
+.sub-badge { font-size: 12px; color: var(--blue); }
+
+.chat-feed {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 6px;
+}
+
+.msg {
+  display: flex;
+  gap: 10px;
+  max-width: 85%;
+}
+
+.msg.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.msg .avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.msg.assistant .avatar { background: #238636; }
+.msg.user .avatar { background: var(--blue); }
+
+.msg .bubble {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.msg.assistant .bubble { background: #21262d; border: 1px solid var(--border); }
+.msg.user .bubble { background: #1f6feb; }
+
+.control-bar {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.call-button {
+  flex: 0 0 240px;
+  height: 52px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.call-button.start { background: var(--red); color: white; }
+.call-button.stop { background: #484f58; color: white; }
+.call-button:hover { opacity: 0.9; }
+
+.input-fallback {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+}
+
+.input-fallback input {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 8px;
+  outline: none;
+}
+
+.input-fallback button {
+  background: #238636;
+  border: none;
+  color: white;
+  padding: 0 20px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.patient-summary h3 { font-size: 14px; margin-bottom: 8px; }
+.info-row { font-size: 13px; margin-top: 4px; }
+.info-row .k { color: var(--subtext); width: 100px; display: inline-block; }

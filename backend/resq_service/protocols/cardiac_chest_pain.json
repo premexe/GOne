@@ -1,0 +1,21 @@
+{
+  "emergency_type": "cardiac_chest_pain",
+  "severity": "critical",
+  "escalation_condition": "Pressure or squeezing pain radiating to arm, neck, or jaw; cold sweat; shortness of breath",
+  "source": "AHA Guidelines for Acute Coronary Syndromes First Aid",
+  "approved_actions": [
+    "Have the person sit down immediately in a comfortable semi-reclined position on the floor or bed.",
+    "Loosen all tight clothing around the neck, chest, and waist.",
+    "Keep the patient calm, quiet, and still; do not let them walk around.",
+    "If the patient has a prescribed personal nitroglycerin or angina spray, assist them in taking their own prescribed medication only.",
+    "Stay by their side and be ready to begin CPR if they become unresponsive."
+  ],
+  "critical_actions": [
+    "Stop all physical exertion immediately.",
+    "Have patient sit still and rested."
+  ],
+  "contraindications": [
+    "Do NOT prescribe or advise medication dosage.",
+    "Do not allow patient to drive themselves or walk."
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "emergency_type": "general_emergency",
+  "severity": "high",
+  "escalation_condition": "Uncertain diagnosis with rapidly deteriorating condition, acute pain, or disorientation",
+  "source": "Emergency Medical Services First Responder Core Principles",
+  "approved_actions": [
+    "Ensure the scene is safe for both you and the patient.",
+    "Help the patient sit or lie down in their most comfortable position.",
+    "Ask what happened and what specific sensations they feel.",
+    "Check responsiveness and maintain regular, calm verbal contact.",
+    "Prepare essential health information and keep the patient warm."
+  ],
+  "critical_actions": [
+    "Keep the patient rested and under continuous observation.",
+    "Assess immediate risks to breathing or consciousness."
+  ],
+  "contraindications": [
+    "Do not administer random oral medications or drinks until assessed.",
+    "Do not leave an unstable patient unattended."
+  ]
+}

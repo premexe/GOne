@@ -1,0 +1,21 @@
+{
+  "emergency_type": "unconscious_unresponsive",
+  "severity": "critical",
+  "escalation_condition": "No response to verbal call or shoulder tap; abnormal, absent, or agonal breathing",
+  "source": "Basic Life Support (BLS) / ILCOR Guidelines",
+  "approved_actions": [
+    "Check responsiveness by loudly speaking and gently tapping the person's shoulders.",
+    "Look at the chest for 5 to 10 seconds to check for normal breathing movement.",
+    "If breathing normally, place them carefully into the Recovery Position (on their side) to keep airway open.",
+    "If NOT breathing or only gasping, place hands in center of chest and push hard and fast (100-120 beats/min).",
+    "Keep the airway clear by gently tilting head back and lifting chin."
+  ],
+  "critical_actions": [
+    "Check breathing immediately.",
+    "If not breathing normally, begin continuous chest compressions."
+  ],
+  "contraindications": [
+    "Do not give liquids or food to an unconscious person.",
+    "Do not shake a trauma victim vigorously."
+  ]
+}

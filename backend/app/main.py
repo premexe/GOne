@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import sys
 
 from app.database.connection import engine
 from app.database.base import Base
@@ -23,6 +24,15 @@ from app.routers.hospitals import router as hospital_router
 from app.routers.doctors import router as doctors_router
 from app.routers.ambulances import router as ambulances_router
 from app.routers.voice import router as voice_router
+
+# Host the supplied G-ONE ResQ service in this API so its browser client and
+# WebSocket share the same deployment and origin as the rest of G-ONE.
+_resq_root = Path(__file__).resolve().parents[1] / "resq_service"
+if str(_resq_root) not in sys.path:
+    sys.path.insert(0, str(_resq_root))
+
+from src.api.routes import router as resq_api_router
+from src.api.websocket import router as resq_websocket_router
 
 app = FastAPI(title="LifeLink AI API")
 Path("uploads/profile-photos").mkdir(parents=True, exist_ok=True)
@@ -61,6 +71,9 @@ app.include_router(hospital_router)
 app.include_router(doctors_router)
 app.include_router(ambulances_router)
 app.include_router(voice_router)
+app.include_router(resq_api_router)
+app.include_router(resq_websocket_router)
+app.mount("/resq", StaticFiles(directory=str(_resq_root / "web"), html=True), name="resq")
 
 @app.get("/")
 def root():

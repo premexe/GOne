@@ -1,0 +1,21 @@
+{
+  "emergency_type": "breathing_difficulty",
+  "severity": "high",
+  "escalation_condition": "Bluish lips or face (cyanosis), inability to speak full sentences, gasping, or audible wheezing",
+  "source": "AHA / ERC Guidelines for Acute Respiratory Distress",
+  "approved_actions": [
+    "Help the person sit upright leaning slightly forward with arms resting on their knees (tripod position).",
+    "Loosen tight collars, ties, and belts to free their chest.",
+    "Ensure the room has fresh air; open windows and ask crowds to step back.",
+    "If the person has their own prescribed asthma inhaler or spacer, assist them in taking it.",
+    "Encourage slow, calm breaths in through the nose and out through pursed lips."
+  ],
+  "critical_actions": [
+    "Keep the patient upright; do not force them to lie down.",
+    "Ensure airway is clear."
+  ],
+  "contraindications": [
+    "Never force an asthmatic or dyspneic patient to lie flat.",
+    "Do not offer water or food while gasping."
+  ]
+}

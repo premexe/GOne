@@ -1,0 +1,21 @@
+{
+  "emergency_type": "neurological_symptoms",
+  "severity": "critical",
+  "escalation_condition": "Facial droop, arm weakness, slurred speech (BE-FAST), sudden seizure, or sudden severe confusion",
+  "source": "AHA / ASA Stroke Recognition and Seizure First Aid",
+  "approved_actions": [
+    "Perform the FAST check: Face droop? Arm weakness? Slurred speech? Record exact time symptoms began.",
+    "Help the patient lie down with head and shoulders slightly elevated on pillows.",
+    "For seizures: clear dangerous objects away, protect head with soft padding, and do not restrain movements.",
+    "Turn seizure patient onto their side into recovery position once convulsions stop to keep airway clear.",
+    "Stay with the person, speaking in calm, reassuring tones."
+  ],
+  "critical_actions": [
+    "Note the exact time symptoms started.",
+    "Keep airway open and prevent secondary injury from falls."
+  ],
+  "contraindications": [
+    "Never put anything into the mouth of a person having a seizure.",
+    "Do not give food, water, or aspirin."
+  ]
+}

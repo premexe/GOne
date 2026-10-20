@@ -1,0 +1,21 @@
+{
+  "emergency_type": "choking",
+  "severity": "critical",
+  "escalation_condition": "Person cannot cough, speak, breathe, or turns blue/clutches neck (universal choking sign)",
+  "source": "Resuscitation Council / Red Cross Choking Management Protocol",
+  "approved_actions": [
+    "Ask 'Are you choking? Can you speak?' If they can cough forcefully, encourage continued coughing.",
+    "If they cannot speak or make sound, deliver 5 firm back blows between shoulder blades with heel of hand.",
+    "If back blows fail, perform 5 abdominal thrusts (Heimlich maneuver) inward and upward just above the navel.",
+    "Alternate 5 back blows and 5 abdominal thrusts until object is expelled or help arrives.",
+    "If the person loses consciousness, lower them gently to the floor and prepare for chest compressions."
+  ],
+  "critical_actions": [
+    "Act immediately if no air movement or voice is present.",
+    "Switch between 5 back blows and 5 abdominal thrusts."
+  ],
+  "contraindications": [
+    "Never perform blind finger sweeps in the mouth.",
+    "Do not give water to a choking person."
+  ]
+}

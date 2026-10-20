@@ -6,13 +6,10 @@ import { COLORS, SPACING } from '../../src/constants/theme';
 import { TimelineStepper, StepItem } from '../../src/components/TimelineStepper';
 import { useEmergencyStore } from '../../src/store/useEmergencyStore';
 import { useProfileStore } from '../../src/store/useProfileStore';
-import { useAuthStore } from '../../src/store/useAuthStore';
-import { GOneResQCallModal } from '../../src/components/GOneResQCallModal';
 
 export default function EmergencyModeScreen() {
   const { activeRequest, isEmergencyActive, endEmergency } = useEmergencyStore();
   const profile = useProfileStore((s) => s.profile);
-  const user = useAuthStore((s) => s.user);
 
   // Guard: if no active SOS, go back to home
   if (!isEmergencyActive || !activeRequest) {
@@ -86,6 +83,8 @@ export default function EmergencyModeScreen() {
     Linking.openURL(`tel:${ambPhone}`);
   };
 
+  const handleOpenResq = () => router.push('/sos/resq');
+
   const handleEndEmergency = async () => {
     try {
       await endEmergency();
@@ -127,12 +126,13 @@ export default function EmergencyModeScreen() {
           <TimelineStepper steps={steps} isDark={true} />
         </View>
 
-        <GOneResQCallModal
-          sosId={activeRequest.id}
-          patientName={user?.name || (profile as any)?.personalInfo?.fullName || 'Patient'}
-          emergencyDescription={[activeRequest.notes, ...(activeRequest.symptoms || []), ...(profile?.allergies || [])].filter(Boolean).join(', ') || 'Emergency check-in'}
-          autoStart={true}
-        />
+        <TouchableOpacity style={styles.resqVoiceButton} onPress={handleOpenResq}>
+          <Siren size={22} color="#FFFFFF" />
+          <View style={styles.resqVoiceTextWrap}>
+            <Text style={styles.resqVoiceTitle}>Open G-ONE ResQ Voice Companion</Text>
+            <Text style={styles.resqVoiceSub}>Live voice triage, transcript, and safe AI guidance</Text>
+          </View>
+        </TouchableOpacity>
 
         {rejectedHospitals.length > 0 && (
           <View style={styles.rejectionCard}>
@@ -319,6 +319,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.emergency.border,
   },
+  resqVoiceButton: {
+    backgroundColor: '#B91C1C',
+    borderRadius: SPACING.cardRadius,
+    padding: 16,
+    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  resqVoiceTextWrap: { flex: 1 },
+  resqVoiceTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  resqVoiceSub: { color: 'rgba(255,255,255,0.82)', fontSize: 12, marginTop: 3 },
   rejectionCard: {
     backgroundColor: 'rgba(255, 176, 59, 0.12)',
     borderColor: 'rgba(255, 176, 59, 0.45)',

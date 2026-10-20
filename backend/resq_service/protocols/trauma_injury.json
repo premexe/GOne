@@ -1,0 +1,21 @@
+{
+  "emergency_type": "trauma_injury",
+  "severity": "high",
+  "escalation_condition": "Suspected fracture, head impact with confusion, neck/spinal pain, deformity, or severe swelling",
+  "source": "ITLS / Red Cross First Aid for Musculoskeletal and Spinal Trauma",
+  "approved_actions": [
+    "Keep the injured person calm and still; do not move them if spinal, neck, or hip injury is suspected.",
+    "Support and immobilize the injured limb in the exact position found without attempting to straighten it.",
+    "Control any external bleeding with gentle surface pressure around broken bones.",
+    "Apply a cold pack wrapped in a cloth to reduce swelling for sprains, for up to 15 minutes.",
+    "Monitor vital alertness and keep the patient warm."
+  ],
+  "critical_actions": [
+    "Do not move the patient if neck or back pain is suspected.",
+    "Immobilize the affected limb in place."
+  ],
+  "contraindications": [
+    "Never attempt to re-align or force fractured bones back into place.",
+    "Never move a patient after a fall unless in imminent physical danger."
+  ]
+}
