@@ -14,7 +14,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://gone-backend.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://lifelink-backend-1tzq.onrender.com"
       }
     },
     "production": {
