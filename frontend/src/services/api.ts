@@ -249,6 +249,7 @@ export const api = {
           email,
           phone_number: phone,
           password,
+          profile_photo: null,
         }),
       });
     return this.login(email, password);
