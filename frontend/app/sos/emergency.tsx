@@ -83,7 +83,7 @@ export default function EmergencyModeScreen() {
     Linking.openURL(`tel:${ambPhone}`);
   };
 
-  const handleOpenResq = () => router.push('/sos/resq');
+  const handleOpenResq = () => router.push({ pathname: '/sos/resq', params: { sosId: String(activeRequest.id) } });
 
   const handleEndEmergency = async () => {
     try {

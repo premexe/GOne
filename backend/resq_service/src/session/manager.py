@@ -13,6 +13,7 @@ class Message(BaseModel):
 class EmergencySession(BaseModel):
     session_id: str = Field(default_factory=lambda: f"SES-{uuid.uuid4().hex[:8].upper()}")
     patient_id: Optional[str] = None
+    sos_id: Optional[int] = None
     detected_language: str = "en"
     emergency_type: str = "general_emergency"
     severity: str = "moderate"
