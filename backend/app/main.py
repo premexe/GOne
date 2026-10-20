@@ -6,6 +6,8 @@ from pathlib import Path
 from app.database.connection import engine
 from app.database.base import Base
 from app.database.migrations import run_migrations
+from app.database.seeder import seed_default_data
+from app.database.session import SessionLocal
 
 import app.models
 
@@ -38,6 +40,14 @@ Base.metadata.create_all(bind=engine)
 
 # Run lightweight schema migrations to add new columns to existing tables
 run_migrations()
+
+# Auto-seed verified accounts and hospital network
+try:
+    _db = SessionLocal()
+    seed_default_data(_db)
+    _db.close()
+except Exception as _e:
+    pass
 
 app.include_router(user_router)
 app.include_router(emergency_wallet_router)
