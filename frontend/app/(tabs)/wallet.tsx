@@ -9,33 +9,21 @@ import { RefreshCw, Edit2, ShieldAlert } from 'lucide-react-native';
 
 export default function WalletScreen() {
   const user = useAuthStore((s) => s.user);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const { profile, fetchProfileAndReadiness } = useProfileStore();
 
   useEffect(() => {
     fetchProfileAndReadiness();
   }, []);
 
-  const defaultUser = user || {
-    id: 'u101',
-    name: 'Alex Johnson',
-    email: 'alex.johnson@example.com',
-    phone: '+1 (555) 234-5678',
-    bloodGroup: 'O+',
-    dob: '1992-06-15',
-  };
-
-  const defaultProfile = profile || {
-    id: 'ep101',
-    userId: 'u101',
-    bloodGroup: 'O+',
-    organDonor: true,
-    emergencyNotes: 'Allergic to penicillin',
-    allergies: ['Penicillin', 'Peanuts'],
-    medications: ['Lisinopril 10mg daily'],
-    conditions: ['Mild Asthma'],
-    emergencyContacts: [
-      { id: 'c1', name: 'Sarah Johnson', relation: 'Spouse', phone: '+1 (555) 987-6543' },
-    ],
+  const walletProfile = profile || {
+    bloodGroup: user?.bloodGroup || '',
+    organDonor: false,
+    emergencyNotes: '',
+    allergies: [],
+    medications: [],
+    conditions: [],
+    emergencyContacts: [],
   };
 
   return (
@@ -52,8 +40,17 @@ export default function WalletScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Main Dark Ink Wallet Card Component */}
-      <WalletCard user={defaultUser} profile={defaultProfile} />
+      {isAuthenticated && user ? (
+        <WalletCard user={user} profile={walletProfile} />
+      ) : (
+        <View style={styles.signInCard}>
+          <Text style={styles.signInTitle}>Sign in to create your emergency QR card</Text>
+          <Text style={styles.signInText}>A QR code is generated only for a real G-ONE account, never demo medical data.</Text>
+          <TouchableOpacity style={styles.signInButton} onPress={() => router.push('/(auth)/login')}>
+            <Text style={styles.signInButtonText}>Sign in</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Instructions Card */}
       <View style={styles.instructionCard}>
@@ -63,7 +60,7 @@ export default function WalletScreen() {
         </View>
 
         <Text style={styles.instText}>
-          This digital card is automatically saved to encrypted local storage on your device. First responders can scan the QR code using any camera or QR scanner to view your vital medical data without requiring an active internet connection.
+          Your wallet is cached on this device for you to show responders. The QR code opens your secure emergency card in a browser, so the responder&apos;s phone needs an internet connection.
         </Text>
 
         <TouchableOpacity
@@ -119,6 +116,36 @@ const styles = StyleSheet.create({
     padding: SPACING.padding,
     borderWidth: 1,
     borderColor: 'rgba(107, 79, 160, 0.2)',
+  },
+  signInCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: SPACING.cardRadius,
+    padding: SPACING.padding,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  signInTitle: {
+    color: COLORS.ink,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  signInText: {
+    color: COLORS.muted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  signInButton: {
+    marginTop: 16,
+    backgroundColor: COLORS.brand,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  signInButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
   instHeaderRow: {
     flexDirection: 'row',

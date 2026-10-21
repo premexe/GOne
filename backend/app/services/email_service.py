@@ -13,7 +13,7 @@ Required environment variables:
   SMTP_PORT       — e.g. 587
   SMTP_USERNAME   — e.g. resend
   SMTP_PASSWORD   — your SMTP / Resend API key
-  EMAIL_FROM      — e.g. "LifeLink Emergency <alerts@yourdomain.com>"
+  EMAIL_FROM      — e.g. "G-ONE Emergency <alerts@yourdomain.com>"
 """
 
 import logging
@@ -46,7 +46,7 @@ SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-EMAIL_FROM = os.getenv("EMAIL_FROM", "LifeLink Emergency <noreply@lifelink.ai>")
+EMAIL_FROM = os.getenv("EMAIL_FROM", "G-ONE Emergency <noreply@example.com>")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 
 _SMTP_READY = all([SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD])
@@ -130,7 +130,7 @@ def _build_html(sos: SOS, user: User, wallet: Optional[EmergencyWallet]) -> str:
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>LifeLink Emergency Alert</title>
+<title>G-ONE Emergency Alert</title>
 </head>
 <body style="margin:0;padding:0;background:#0a0a0a;font-family:'Segoe UI',Arial,sans-serif;">
   <div style="max-width:680px;margin:0 auto;padding:24px 16px;">
@@ -139,7 +139,7 @@ def _build_html(sos: SOS, user: User, wallet: Optional[EmergencyWallet]) -> str:
     <div style="background:linear-gradient(135deg,#dc2626,#7f1d1d);border-radius:12px;padding:28px 24px;text-align:center;margin-bottom:24px;">
       <div style="font-size:48px;margin-bottom:8px;">🚨</div>
       <h1 style="color:#fff;margin:0;font-size:26px;font-weight:700;letter-spacing:-0.5px;">EMERGENCY SOS ACTIVATED</h1>
-      <p style="color:#fca5a5;margin:8px 0 0;font-size:14px;">LifeLink AI Emergency Response System</p>
+      <p style="color:#fca5a5;margin:8px 0 0;font-size:14px;">G-ONE Emergency Response System</p>
     </div>
 
     <!-- Patient Info -->
@@ -204,7 +204,7 @@ def _build_html(sos: SOS, user: User, wallet: Optional[EmergencyWallet]) -> str:
 
     <!-- Footer -->
     <div style="text-align:center;padding:16px;">
-      <p style="color:#4b5563;font-size:12px;margin:0;">This is an automated emergency notification from <strong style="color:#6b7280;">LifeLink AI</strong>.</p>
+      <p style="color:#4b5563;font-size:12px;margin:0;">This is an automated emergency notification from <strong style="color:#6b7280;">G-ONE</strong>.</p>
       <p style="color:#4b5563;font-size:12px;margin:4px 0 0;">Do not reply to this email. If this is a false alarm, please contact the patient directly.</p>
     </div>
 
@@ -284,7 +284,7 @@ class EmailService:
         )
 
         html = _build_html(sos, user, wallet)
-        subject = f"🚨 LifeLink SOS Alert — {user.full_name} (SOS #{sos_id})"
+        subject = f"🚨 G-ONE SOS Alert — {user.full_name} (SOS #{sos_id})"
 
         sent = 0
         errors = 0

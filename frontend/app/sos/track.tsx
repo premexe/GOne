@@ -161,10 +161,13 @@ export default function TrackEmergencyScreen() {
 <body>
   <div id="map"></div>
   <script>
-    var map = L.map('map', { zoomControl: false, attributionControl: false });
+    var map = L.map('map', { zoomControl: false, attributionControl: true });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19
+    // OpenStreetMap tiles are key-free. CARTO's public basemap now requires
+    // an API key, which caused the installed app to display an error.
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
     var userIcon = L.divIcon({

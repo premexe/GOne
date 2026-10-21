@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "LifeLink AI+",
+    "name": "G-ONE",
     "slug": "lifelink-ai-plus",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,8 +11,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.lifelink.aiplus",
       "infoPlist": {
-        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
-        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone."
+        "NSSpeechRecognitionUsageDescription": "Allow G-ONE to transcribe emergency voice notes.",
+        "NSMicrophoneUsageDescription": "Allow G-ONE to record emergency voice notes."
       }
     },
     "android": {
@@ -37,11 +37,22 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Allow LifeLink AI+ to use Face ID to unlock your emergency workspace."
+          "faceIDPermission": "Allow G-ONE to use Face ID to unlock your emergency workspace."
         }
       ],
       "expo-secure-store",
-      "expo-speech-recognition",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow G-ONE to record emergency voice notes.",
+          "speechRecognitionPermission": "Allow G-ONE to transcribe emergency voice notes.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.as",
+            "com.google.android.tts"
+          ]
+        }
+      ],
       "expo-asset",
       "expo-status-bar"
     ],

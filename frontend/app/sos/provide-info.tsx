@@ -4,7 +4,7 @@ import { Siren, Mic, CheckCircle2, ArrowRight, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { COLORS, TYPOGRAPHY, SPACING } from '../../src/constants/theme';
 import { useEmergencyStore } from '../../src/store/useEmergencyStore';
-import { isSpeechRecognitionAvailable, startSpeechRecognition } from '../../src/services/speechRecognition';
+import { startSpeechRecognition } from '../../src/services/speechRecognition';
 
 export default function ProvideInfoScreen() {
   const { selectedSymptoms, toggleSymptom, setNotes, notes, triggerSOS } = useEmergencyStore();
@@ -50,14 +50,6 @@ export default function ProvideInfoScreen() {
       return;
     }
 
-    if (!isSpeechRecognitionAvailable()) {
-      Alert.alert(
-        'Voice transcription unavailable',
-        'Tap & Speak works after the LifeLink app is installed as a development or production build. You can enter the emergency note manually below.',
-      );
-      return;
-    }
-
     setVoiceError(null);
     const recognition = await startSpeechRecognition({
       onTranscript: setNotes,
@@ -70,6 +62,8 @@ export default function ProvideInfoScreen() {
     if (recognition) {
       recognitionRef.current = recognition;
       setIsRecording(true);
+    } else {
+      setIsRecording(false);
     }
   };
 
@@ -127,7 +121,7 @@ export default function ProvideInfoScreen() {
           </Text>
         </TouchableOpacity>
 
-        <Text style={styles.voiceHint}>Uses live speech recognition. Review the text before sending an SOS.</Text>
+        <Text style={styles.voiceHint}>Uses your phone&apos;s speech service in its configured language. Review the text before sending an SOS.</Text>
 
         {voiceError ? <Text style={styles.voiceError}>{voiceError}</Text> : null}
 

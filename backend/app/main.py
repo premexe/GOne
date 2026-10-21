@@ -34,7 +34,7 @@ if str(_resq_root) not in sys.path:
 from src.api.routes import router as resq_api_router
 from src.api.websocket import router as resq_websocket_router
 
-app = FastAPI(title="LifeLink AI API")
+app = FastAPI(title="G-ONE API")
 Path("uploads/profile-photos").mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
@@ -78,7 +78,7 @@ app.mount("/resq", StaticFiles(directory=str(_resq_root / "web"), html=True), na
 @app.get("/")
 def root():
     return {
-        "message": "LifeLink AI Backend Running Successfully"
+        "message": "G-ONE Backend Running Successfully"
     }
 
 

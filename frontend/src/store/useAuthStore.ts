@@ -41,7 +41,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ isLoading: false });
         return {
           success: false,
-          message: 'Biometric unlock is available in the LifeLink mobile app. Please sign in with your email and password on web.',
+          message: 'Biometric unlock is available in the G-ONE mobile app. Please sign in with your email and password on web.',
         };
       }
 
@@ -57,7 +57,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Unlock LifeLink AI+',
+        promptMessage: 'Unlock G-ONE',
         cancelLabel: 'Cancel',
         disableDeviceFallback: false,
       });

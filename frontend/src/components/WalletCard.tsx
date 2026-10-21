@@ -21,10 +21,10 @@ export const WalletCard: React.FC<WalletCardProps> = ({ user, profile }) => {
       <View style={styles.headerRow}>
         <View style={styles.brandBadge}>
           <ShieldCheck size={18} color="#FFFFFF" />
-          <Text style={styles.brandTitle}>LIFELINK EMERGENCY ID</Text>
+          <Text style={styles.brandTitle}>G-ONE EMERGENCY ID</Text>
         </View>
         <View style={styles.offlineBadge}>
-          <Text style={styles.offlineBadgeText}>OFFLINE CACHED</Text>
+          <Text style={styles.offlineBadgeText}>READY TO SCAN</Text>
         </View>
       </View>
 
@@ -79,7 +79,7 @@ export const WalletCard: React.FC<WalletCardProps> = ({ user, profile }) => {
       {/* Card Footer */}
       <View style={styles.footerRow}>
         <Text style={styles.footerCaption}>
-          Available offline. Show this to first responders during emergency.
+          Show this to first responders during an emergency.
         </Text>
       </View>
     </View>

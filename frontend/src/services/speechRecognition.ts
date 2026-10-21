@@ -1,5 +1,6 @@
 type SpeechRecognitionModule = {
   isRecognitionAvailable: () => boolean;
+  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
   requestMicrophonePermissionsAsync: () => Promise<{ granted: boolean }>;
   androidTriggerOfflineModelDownload?: (options: { locale: string }) => Promise<unknown>;
   getSupportedLocales?: (options: Record<string, never>) => Promise<{ installedLocales: string[] }>;
@@ -51,6 +52,16 @@ export function isSpeechRecognitionAvailable(): boolean {
   return getSpeechRecognitionModule()?.isRecognitionAvailable() ?? false;
 }
 
+function preferredLanguage(): string {
+  try {
+    // Use the language configured on the person's device instead of forcing
+    // English or Hindi for every emergency note.
+    return Intl.DateTimeFormat().resolvedOptions().locale || 'en-IN';
+  } catch (_error) {
+    return 'en-IN';
+  }
+}
+
 export async function startSpeechRecognition(options: {
   language?: string;
   onTranscript: (transcript: string) => void;
@@ -97,11 +108,22 @@ export async function startSpeechRecognition(options: {
   }
 
   const speechRecognition = getSpeechRecognitionModule();
-  if (!speechRecognition?.isRecognitionAvailable()) return null;
+  if (!speechRecognition) {
+    options.onError('Voice transcription is not included in this app build. Install the latest G-ONE build and try again.');
+    return null;
+  }
 
-  const permission = await speechRecognition.requestMicrophonePermissionsAsync();
+  // This requests both microphone permission and the separate iOS speech
+  // recognition permission. Requesting only RECORD_AUDIO left iOS unable to
+  // start transcription.
+  const permission = await speechRecognition.requestPermissionsAsync();
   if (!permission.granted) {
     options.onError('Microphone permission is required to transcribe a voice note. Allow it in Settings and try again.');
+    return null;
+  }
+
+  if (!speechRecognition.isRecognitionAvailable()) {
+    options.onError('No speech recognition service is available. Enable Google voice typing or install/update the Google app, then try again.');
     return null;
   }
 
@@ -122,18 +144,28 @@ export async function startSpeechRecognition(options: {
     }),
   ];
 
-  const locale = options.language || 'en-US';
+  const locale = options.language || preferredLanguage();
 
-  speechRecognition.start({
-    lang: locale,
-    continuous: false,
-    interimResults: true,
-    // Use the phone's normal recognition service. Requiring a downloaded
-    // offline model prevented the first voice interview on many devices.
-    requiresOnDeviceRecognition: false,
-    addsPunctuation: false,
-    contextualStrings: ['chest pain', 'breathing difficulty', 'bleeding', 'accident', 'unconscious'],
-  });
+  try {
+    speechRecognition.start({
+      lang: locale,
+      continuous: false,
+      interimResults: true,
+      // Use the phone's normal recognition service. Requiring a downloaded
+      // offline model prevented the first voice interview on many devices.
+      requiresOnDeviceRecognition: false,
+      addsPunctuation: false,
+      contextualStrings: ['chest pain', 'breathing difficulty', 'bleeding', 'accident', 'unconscious'],
+      androidIntentOptions: {
+        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 10000,
+        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 5000,
+      },
+    });
+  } catch (error) {
+    subscriptions.forEach((subscription) => subscription.remove());
+    options.onError(error instanceof Error ? error.message : 'Speech recognition could not start.');
+    return null;
+  }
 
   return { stop: () => speechRecognition.stop(), abort: () => speechRecognition.abort() };
 }

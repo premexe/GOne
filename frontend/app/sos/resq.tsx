@@ -42,7 +42,7 @@ export default function ResqVoiceScreen() {
   const startListening = async () => {
     if (!connectedRef.current || listeningRef.current || thinkingRef.current || completing) return;
     setStatus('Listening... speak naturally in your language.'); listeningRef.current = true; setListening(true);
-    const handle = await startSpeechRecognition({ language: 'hi-IN', onTranscript: sendTurn, onEnd: () => { listeningRef.current = false; setListening(false); }, onError: () => { listeningRef.current = false; setListening(false); setStatus('Voice recognition is unavailable. Type your message below.'); } });
+    const handle = await startSpeechRecognition({ onTranscript: sendTurn, onEnd: () => { listeningRef.current = false; setListening(false); }, onError: () => { listeningRef.current = false; setListening(false); setStatus('Voice recognition is unavailable. Type your message below.'); } });
     recognitionRef.current = handle;
     if (!handle) { listeningRef.current = false; setListening(false); }
   };

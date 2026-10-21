@@ -286,7 +286,7 @@ export default function ProfileScreen() {
   };
 
   const handleSignOut = () => {
-    Alert.alert('Sign out', 'Do you want to sign out from LifeLink AI+ on this device?', [
+    Alert.alert('Sign out', 'Do you want to sign out from G-ONE on this device?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign out',

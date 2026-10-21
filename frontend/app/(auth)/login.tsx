@@ -47,9 +47,9 @@ export default function LoginScreen() {
           <ShieldCheck size={42} color={COLORS.brand} />
         </View>
 
-        <Text style={styles.appName}>LifeLink AI+</Text>
+        <Text style={styles.appName}>G-ONE</Text>
         <Text style={styles.tagline}>
-          AI-Powered Emergency Healthcare & Emergency Wallet
+          AI-powered emergency healthcare and emergency wallet
         </Text>
 
         {/* Feature Highlights Card */}

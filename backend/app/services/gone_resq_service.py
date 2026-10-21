@@ -270,8 +270,8 @@ PROTOCOLS: Dict[str, Dict[str, Any]] = {
             "Stay on this call — help is on the way."
         ],
         "default_voice_response": {
-            "en": "I am LifeLink's G-ONE ResQ Emergency Voice Companion. Responders have been notified of your location. Please stay calm and tell me your main symptoms right now.",
-            "hi": "Main LifeLink G-ONE ResQ emergency voice companion hoon. Responders ko aapki location bhej di gayi hai. Shaant rahein aur batayein aapko is samay kya takleef ho rahi hai?",
+            "en": "I am G-ONE ResQ, your emergency voice companion. Responders have been notified of your location. Please stay calm and tell me your main symptoms right now.",
+            "hi": "Main G-ONE ResQ emergency voice companion hoon. Responders ko aapki location bhej di gayi hai. Shaant rahein aur batayein aapko is samay kya takleef ho rahi hai?",
             "mr": "मी लाइफलिंक जी-वन रेस्क्यू आपत्कालीन व्हॉइस साथीदार आहे. तुमच्या स्थानाची माहिती मदत पथकाला दिली आहे. शांत राहा आणि तुम्हाला नेमका काय त्रास होतोय ते सांगा."
         }
     }

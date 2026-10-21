@@ -54,7 +54,7 @@ export async function request(path: string, options: RequestInit = {}) {
     });
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error('Cannot reach the LifeLink API. Check your internet connection and confirm the LifeLink backend is online.');
+      throw new Error('Cannot reach the G-ONE service. Check your internet connection and confirm the backend is online.');
     }
     throw error;
   } finally {
