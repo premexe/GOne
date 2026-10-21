@@ -50,6 +50,7 @@ EMAIL_FROM = os.getenv("EMAIL_FROM", "LifeLink Emergency <noreply@lifelink.ai>")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 
 _SMTP_READY = all([SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD])
+_EMAIL_READY = _SMTP_READY or bool(RESEND_API_KEY)
 
 
 def _send_resend_api(to_email: str, subject: str, html_body: str) -> bool:
@@ -214,13 +215,19 @@ def _build_html(sos: SOS, user: User, wallet: Optional[EmergencyWallet]) -> str:
 
 def _send_smtp(to_email: str, subject: str, html_body: str) -> bool:
     """Low-level SMTP send. Falls back gracefully to simulation mode when SMTP credentials are not configured."""
-    if not _SMTP_READY:
+    if not _EMAIL_READY:
         logger.info(
             "[EMAIL SIMULATED — configure SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD in .env for live delivery] To: %s | Subject: %s",
             to_email,
             subject,
         )
         return False
+
+    # Render commonly permits outbound HTTPS reliably while SMTP can stall.
+    # Resend accepts the same API key, so use HTTPS first when available.
+    if RESEND_API_KEY or SMTP_HOST.lower() == "smtp.resend.com":
+        if _send_resend_api(to_email, subject, html_body):
+            return True
 
     try:
         msg = MIMEMultipart("alternative")
@@ -239,8 +246,7 @@ def _send_smtp(to_email: str, subject: str, html_body: str) -> bool:
         return True
     except Exception as e:
         logger.error("[EMAIL FAILED] To: %s | Error: %s", to_email, e)
-        # Render can time out on outbound SMTP while HTTPS remains available.
-        return _send_resend_api(to_email, subject, html_body)
+        return False
 
 
 class EmailService:
@@ -263,12 +269,12 @@ class EmailService:
             logger.warning("EmailService: User not found for SOS %s.", sos_id)
             return {"sent": 0, "errors": 1}
 
-        if not _SMTP_READY:
-            logger.error("EmailService: SMTP is not configured; refusing to mark SOS %s as emailed.", sos_id)
+        if not _EMAIL_READY:
+            logger.error("EmailService: no email provider is configured; refusing to mark SOS %s as emailed.", sos_id)
             return {
                 "sent": 0,
                 "errors": 1,
-                "configuration_error": "SMTP is not configured on this deployment.",
+                "configuration_error": "SMTP or Resend API is not configured on this deployment.",
             }
 
         wallet: Optional[EmergencyWallet] = (
