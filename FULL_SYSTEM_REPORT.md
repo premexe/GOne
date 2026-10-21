@@ -1,49 +1,46 @@
-# G-ONE / LifeLink AI+ — Complete System & Architecture Report
+﻿# GOne / LifeLink AI+ - Full System Report
 
-> **Project Name:** G-ONE (LifeLink AI+)  
-> **Package Identifier:** `com.lifelink.aiplus`  
-> **Version:** 1.0.0 (Expo SDK 57 / React Native 0.86.3)  
-> **Status:** Production-Ready Emergency Response Ecosystem (Mobile App + Admin Dashboard + Cloud Backend + AI Voice Companion)  
-> **Repository:** [`https://github.com/premexe/GOne`](https://github.com/premexe/GOne)  
-> **Cloud API Endpoint:** `https://gone-backend.onrender.com`  
-> **Generated:** October 2026  
+> **Document Type:** Technical System Report
+> **Generated:** October 2026
+> **Project Name:** GOne / LifeLink AI+
+> **Version:** 1.0.0 (EAS Build in progress)
 
 ---
 
 ## Table of Contents
 
-1. [Executive Summary & Mission](#1-executive-summary--mission)
+1. [System Overview](#1-system-overview)
 2. [Complete Technology Stack](#2-complete-technology-stack)
-3. [System Architecture Diagram](#3-system-architecture-diagram)
-4. [Mobile Application (Patient & Bystander Facing)](#4-mobile-application-patient--bystander-facing)
-5. [G-ONE ResQ Voice-First Emergency Companion (New Feature Deep Dive)](#5-g-one-resq-voice-first-emergency-companion-new-feature-deep-dive)
-6. [Hospital Emergency Admin Dashboard (`/admin`)](#6-hospital-emergency-admin-dashboard-admin)
-7. [FastAPI Backend & Service Architecture](#7-fastapi-backend--service-architecture)
+3. [System Architecture](#3-system-architecture)
+4. [Mobile Application](#4-mobile-application)
+5. [G-ONE ResQ Voice Companion](#5-g-one-resq-voice-companion)
+6. [Hospital Admin Dashboard](#6-hospital-admin-dashboard)
+7. [FastAPI Backend and Service Architecture](#7-fastapi-backend-and-service-architecture)
 8. [Complete API Endpoints Catalog](#8-complete-api-endpoints-catalog)
-9. [Database Models & Entity Relationships](#9-database-models--entity-relationships)
-10. [AI, Speech, & Voice Engine Architecture](#10-ai-speech--voice-engine-architecture)
-11. [Network Security, Android Policy & Offline Resilience](#11-network-security-android-policy--offline-resilience)
-12. [Environment Configuration & Deployment Guide](#12-environment-configuration--deployment-guide)
+9. [Database Models and Entity Relationships](#9-database-models-and-entity-relationships)
+10. [AI, Speech, and Voice Engine Architecture](#10-ai-speech-and-voice-engine-architecture)
+11. [Network Security and Offline Resilience](#11-network-security-and-offline-resilience)
+12. [Environment Configuration and Deployment](#12-environment-configuration-and-deployment)
+13. [Summary of Latest Features](#13-summary-of-latest-features)
 
 ---
 
-## 1. Executive Summary & Mission
+## 1. System Overview
 
-**G-ONE (LifeLink AI+)** is an end-to-end mission-critical emergency healthcare response platform. It bridges the critical pre-hospital gap between an emergency occurring, patient panic, first-aid administration, ambulance transit, and emergency room admission.
+LifeLink AI+ (code-name GOne) is a production-targeted emergency health companion for India. The system is structured as three integrated tiers:
 
-### Core Problems Solved
-1. **The Critical "Golden Hour" Delay:** Patients in cardiac arrest, severe trauma, or stroke often suffer irreparable harm due to bystander inaction or panic before an ambulance arrives.
-2. **Language & Panic Barriers:** During medical crises in multicultural regions (like India), patients and bystanders need urgent verbal assistance in their native mother tongue (Hindi, Marathi, or English).
-3. **Manual App Friction:** In a life-threatening crisis, requiring users to repeatedly press buttons to talk or navigate complex forms fails.
-4. **Hospital Triage Blindness:** Emergency rooms receive patients without pre-arrival knowledge of blood group, allergies, medications, or incident timeline.
+1. **Mobile App** - A React Native / Expo application for patients, bystanders, and hospital triage staff.
+2. **FastAPI Backend** - A Python server handling authentication, SOS dispatch, hospital coordination, AI triage, email alerts, and Agora RTC token generation.
+3. **G-ONE ResQ** - An embedded voice-first AI emergency companion (WebSocket + REST) serving protocol-bound first-aid guidance in English, Hindi, and Marathi.
 
-### How G-ONE Solves It
-- **1-Tap Emergency SOS:** Triggers multi-hospital dispatch, coordinates nearest ambulance, and transmits GPS coordinates.
-- **In-App AI Voice Dispatcher (G-ONE ResQ):** Simulates an incoming emergency call and runs a **hands-free continuous conversational voice loop** in English, Hindi, and Marathi.
-- **Protocol-Bound Guidance:** Delivers 9 authoritative clinical first-aid protocols (CPR, Choking/Heimlich, Stroke FAST test, Hemorrhage control, etc.).
-- **"While Ambulance is En Route" Checklist:** Clear step-by-step pre-hospital survival instructions.
-- **QR Medical Identity & Emergency Wallet:** Offline-accessible medical wallet with blood group, allergies, chronic conditions, and emergency contacts.
-- **Hospital Command Center (`/admin`):** Real-time triage board with 3-second polling for emergency room coordinators.
+### Core Capabilities
+
+- **1-Tap SOS Dispatch:** Single button triggers GPS acquisition, distance-ranked hospital matching, and emergency notification pipeline.
+- **G-ONE ResQ Voice Call:** Hands-free continuous speech-to-text/text-to-speech AI dialogue for pre-hospital guidance with auto-detect language support.
+- **Offline Emergency Wallet:** QR-code-backed medical identity (blood group, allergies, medications) readable without internet.
+- **"While Ambulance is En Route" Checklist:** Interactive pre-hospital survival checklist for bystanders.
+- **Hospital Command Center (`/admin`):** Real-time triage board for ER coordinators with 3-second polling.
+- **EAS Cloud APK Distribution:** One-command Android APK build and distribution via Expo Application Services.
 
 ---
 
@@ -54,434 +51,521 @@
 | **Mobile App Shell** | Expo Framework | SDK 57 (Managed Workflow) |
 | **Mobile Runtime** | React Native | 0.86.3 (Fabric/Hermes engine) |
 | **Language (Frontend)** | TypeScript | Strict type checking throughout |
-| **Routing** | Expo Router | File-based navigation (`app/` directory) |
-| **Global State** | Zustand | `useAuthStore`, `useSOSStore`, `useEmergencyStore` |
-| **Storage (Persistent)** | AsyncStorage & SecureStore | Auth tokens, cached wallet, biometric credentials |
-| **Biometric Auth** | `expo-local-authentication` | Fingerprint & FaceID biometric unlock |
-| **Speech-to-Text (STT)** | `expo-speech-recognition` | Native Android/iOS speech recognizer + Web Speech fallback |
-| **Text-to-Speech (TTS)** | `expo-speech` | Multi-language voice output (`en-IN`, `hi-IN`, `mr-IN`) |
-| **In-App Calling Engine**| Agora RTC (`react-native-agora`) | In-app audio calling without telephone numbers |
-| **Icons & Design** | `lucide-react-native` | High-fidelity medical and control icons |
-| **QR Code Engine** | `react-native-qrcode-svg` | Emergency wallet QR code generation |
-| **Backend Framework** | FastAPI (Python 3.12+ / 3.13) | High-performance asynchronous REST API |
-| **ASGI Server** | Uvicorn & Gunicorn | Production concurrent web server |
-| **ORM & Database** | SQLAlchemy & PostgreSQL | Supabase pooler with automatic SQLite fallback (`lifelink_ai.db`) |
-| **Primary AI Provider** | Google Gemini (`gemini-2.5-flash`) | Via official `google-genai` SDK |
-| **Deterministic AI Engine**| Python Regex / Rule Engine | 100% resilient offline fallback (never fails) |
-| **OCR & Vision** | Pytesseract, PDF2Image, Poppler | Medical report & prescription extraction |
+| **Routing** | Expo Router | File-based navigation (app/ directory) |
+| **Global State** | Zustand | useAuthStore, useEmergencyStore, useHospitalStore, useProfileStore, useRecordStore |
+| **Storage (Persistent)** | AsyncStorage and SecureStore | Auth tokens, cached wallet, biometric credentials |
+| **Biometric Auth** | expo-local-authentication | Fingerprint and Face ID biometric unlock |
+| **Speech-to-Text (STT)** | expo-speech-recognition | Native Android/iOS speech recognizer + Web Speech fallback |
+| **Text-to-Speech (TTS)** | expo-speech | Multi-language voice output (en-IN, hi-IN, mr-IN) |
+| **In-App Calling** | react-native-agora 4.6.4 | Agora RTC in-app audio calling without telephone numbers |
+| **Icons** | lucide-react-native | Medical and control icons |
+| **QR Code** | react-native-qrcode-svg | Emergency wallet QR code generation |
+| **Backend Framework** | FastAPI (Python 3.12+) | High-performance asynchronous REST API |
+| **ASGI Server** | Uvicorn and Gunicorn | Production concurrent web server |
+| **ORM and Database** | SQLAlchemy + PostgreSQL | Supabase pooler with automatic SQLite fallback |
+| **Primary AI Provider** | Google Gemini 2.5 Flash | Via official google-genai SDK |
+| **Secondary AI Provider** | Groq (llama-3.3-70b-versatile) | Fallback when Gemini is unavailable or quota-limited |
+| **Deterministic AI Engine** | Python Regex / Rule Engine | 100% resilient offline fallback (never fails) |
+| **OCR and Vision** | Pytesseract, PDF2Image, Poppler | Medical report and prescription extraction |
 | **Email Delivery** | Resend / SMTP | Hospital alert and transcript notification emails |
-| **Cloud Hosting** | Render | `https://gone-backend.onrender.com` |
-| **Cloud Build System** | Expo Application Services (EAS)| Direct Standalone Android `.apk` distribution |
+| **Phone Calls (Legacy)** | Bland AI | Optional outbound AI voice calls to patient phone |
+| **Cloud Hosting** | Render | https://lifelink-backend-1tzq.onrender.com |
+| **Cloud Build System** | Expo Application Services (EAS) | Direct standalone Android APK distribution |
 
 ---
 
-## 3. System Architecture Diagram
+## 3. System Architecture
 
 ```
-+---------------------------------------------------------------------------------------+
-|                                    MOBILE CLIENT                                      |
-|                                (LifeLink AI+ / Expo)                                  |
-|                                                                                       |
-|  +--------------------+  +--------------------+  +---------------------------------+  |
-|  |    Patient App     |  | Offline Medical QR |  |      G-ONE ResQ Voice Call      |  |
-|  | - 1-Tap SOS Button |  | - Blood, Allergies |  | - Hands-free Continuous STT/TTS |  |
-|  | - Live ETA Tracking|  | - Medications      |  | - Auto-Detect: EN, HI, MR       |  |
-|  | - Hospital Ranking |  | - Emergency Contact|  | - Actions "Till Ambulance Comes"|  |
-|  +--------------------+  +--------------------+  +---------------------------------+  |
-|                                                                                       |
-|  +---------------------------------------------------------------------------------+  |
-|  |              Hospital Admin Command Center (/admin route in app)                |  |
-|  |   - 3-Second Real-Time Polling Queue   - Accept / Reject Triage Board           |  |
-|  |   - Ambulance Progression Milestones    - Clinical Handover Review               |  |
-|  +---------------------------------------------------------------------------------+  |
-+-------------------------------------------+-------------------------------------------+
++-----------------------------------------------------------------------------------+
+|                                    MOBILE CLIENT                                  |
+|                              (LifeLink AI+ / Expo SDK 57)                         |
+|                                                                                   |
+|  +------------------+  +--------------------+  +-------------------------------+  |
+|  |   Patient App    |  | Offline Medical QR |  |   G-ONE ResQ Voice Call       |  |
+|  | - 1-Tap SOS      |  | - Blood, Allergies |  | - Hands-free Continuous STT   |  |
+|  | - Live Tracking  |  | - Medications      |  | - Auto-Detect: EN, HI, MR     |  |
+|  | - Hospital Rank  |  | - Emergency Contact|  | - "Till Ambulance Comes" Guide |  |
+|  +------------------+  +--------------------+  +-------------------------------+  |
+|                                                                                   |
+|  +-------------------------------------------------------------------------------+|
+|  |    Hospital Admin Command Center (/admin route in app)                        ||
+|  |   - 3-Second Real-Time Polling Queue    - Accept / Reject Triage Board        ||
+|  |   - Ambulance Progression Milestones    - Clinical Handover Review            ||
+|  +-------------------------------------------------------------------------------+|
++-------------------------------------------+---------------------------------------+
                                             |
-                                  HTTPS REST API / JSON
+                              HTTPS REST API / WebSocket
                                             |
                                             v
-+---------------------------------------------------------------------------------------+
-|                               FASTAPI BACKEND ENGINE                                  |
-|                          (Port 8000 / Render Cloud Host)                              |
-|                                                                                       |
-|  +--------------------+  +--------------------+  +---------------------------------+  |
-|  |    Auth & Users    |  |   SOS Dispatcher   |  |        G-ONE ResQ Service       |  |
-|  | - JWT (HS256)      |  | - Distance Ranking |  | - Protocol Engine (9 Categories)|  |
-|  | - BCrypt Password  |  | - Milestone State  |  | - Patient Medical Context Blend |  |
-|  | - Biometrics Hook  |  | - Notification Bus |  | - Multi-turn Triage Reasoner    |  |
-|  +--------------------+  +--------------------+  +---------------------------------+  |
-|                                                           |                           |
-|       +---------------------------------------------------+                           |
-|       |                                                                               |
-|       v                                                                               v
-|  +---------------------------+                                  +-------------------+ |
-|  |     AI Provider Layer     |                                  |  Agora RTC Engine | |
-|  | - Google Gemini 2.5 Flash |                                  | - Token Generator | |
-|  | - Deterministic Protocols |                                  | - In-App Channels | |
-|  +---------------------------+                                  +-------------------+ |
-+-------------------------------------------+-------------------------------------------+
++-----------------------------------------------------------------------------------+
+|                               FASTAPI BACKEND ENGINE                              |
+|               (Port 8000 / https://lifelink-backend-1tzq.onrender.com)            |
+|                                                                                   |
+|  +------------------+  +--------------------+  +-------------------------------+  |
+|  |  Auth & Users    |  |  SOS Dispatcher    |  |  G-ONE ResQ Service           |  |
+|  | - JWT (HS256)    |  | - Distance Ranking |  | - Protocol Engine (9 Types)   |  |
+|  | - BCrypt Password|  | - Milestone State  |  | - Medical Wallet Context      |  |
+|  | - Biometrics Hook|  | - Notification Bus |  | - Multi-turn Triage Reasoner  |  |
+|  +------------------+  +--------------------+  +-------------------------------+  |
+|                                                                                   |
+|  +--------------------+  +------------------+  +-------------------------------+  |
+|  | AI Provider Layer  |  | Agora RTC Engine |  | Email Service (Resend SMTP)   |  |
+|  | - Gemini 2.5 Flash |  | - Token Generator|  | - Emergency Contact Alerts    |  |
+|  | - Groq Fallback    |  | - In-App Channels|  | - Transcript Delivery         |  |
+|  | - Deterministic    |  +------------------+  +-------------------------------+  |
+|  +--------------------+                                                           |
+|                                                                                   |
+|  ResQ WebSocket (/ws/emergency) + Browser Client (/resq/)                         |
++-------------------------------------------+---------------------------------------+
                                             |
-                     +----------------------+----------------------+
-                     |                                             |
-                     v                                             v
-+-------------------------------------------+  +----------------------------------------+
-|          DATABASE PERSISTENCE             |  |           EXTERNAL DISPATCH            |
-| - Primary: PostgreSQL (Supabase Pooler)   |  | - Resend SMTP Email Service            |
-| - Fallback: SQLite (lifelink_ai.db)       |  | - Emergency Contacts Email Alert       |
-+-------------------------------------------+  +----------------------------------------+
+                     +----------------------+--------------------+
+                     |                                           |
+                     v                                           v
++--------------------------------------------+  +-----------------------------------------+
+|         DATABASE PERSISTENCE               |  |           EXTERNAL SERVICES              |
+| - Primary: PostgreSQL (Supabase Pooler)    |  | - Resend SMTP Email                      |
+| - Fallback: SQLite (lifelink_ai.db)        |  | - Bland AI Phone Calls (legacy/optional) |
+| - Auto-seeder: premkakade2005 + demo       |  | - EAS Cloud APK Builder                  |
++--------------------------------------------+  +-----------------------------------------+
 ```
 
 ---
 
-## 4. Mobile Application (Patient & Bystander Facing)
+## 4. Mobile Application (Patient and Bystander Facing)
 
-### 4.1 Authentication & Profile
-- **JWT-Based Authentication:** Standard `POST /users/login` returning Bearer tokens stored securely in `AsyncStorage`.
-- **Biometric Unlock:** One-touch fingerprint/FaceID login via `expo-local-authentication`.
+### 4.1 Authentication and Profile
+
+- **JWT-Based Authentication:** Standard POST /users/login returning Bearer tokens stored securely in AsyncStorage.
+- **Biometric Unlock:** One-touch fingerprint/FaceID login via expo-local-authentication.
 - **User Profile Management:** Edit name, phone number, date of birth, and blood group.
+- **Session Restore:** Root layout hydrates session on app start and redirects appropriately.
 
-### 4.2 Home Dashboard (`app/(tabs)/index.tsx`)
+### 4.2 Home Dashboard (app/(tabs)/index.tsx)
+
 - **Emergency Readiness Score:** Calculated dynamically (0-100%) based on completed profile info, emergency contacts, and uploaded medical documents.
 - **Giant Emergency SOS Button:** Pulsating red action button that initiates instant GPS acquisition and hospital matching.
 - **Nearby Hospital Cards:** Quick-reference cards showing nearest hospitals with distance, ETA, and ICU bed availability.
 
-### 4.3 Offline Emergency Wallet & QR Identity (`app/(tabs)/wallet.tsx`)
+### 4.3 Offline Emergency Wallet and QR Identity (app/(tabs)/wallet.tsx)
+
 - **Zero-Network Emergency Card:** Displays blood group, allergies, chronic conditions, and emergency notes even with airplane mode on.
-- **Dynamic QR Code:** Built with `react-native-qrcode-svg`. First responders or bystanders can scan the patient's phone screen to access critical medical identity instantly without unlocking the phone.
+- **Dynamic QR Code:** Built with react-native-qrcode-svg. First responders or bystanders can scan the patient's phone screen to access critical medical identity without unlocking.
 - **Emergency Contacts Directory:** Quick 1-tap dial buttons for primary family members and physicians.
 
-### 4.4 Medical Records & AI OCR (`app/(tabs)/records.tsx`)
-- Upload prescriptions, discharge summaries, and lab reports (PDF, JPG, PNG).
-- Background OCR extracts text via `pytesseract` and generates an AI summary of key findings and medications.
+### 4.4 SOS Emergency Flow
 
-### 4.5 Live Emergency SOS Tracking (`app/sos/track.tsx`)
-- Real-time milestone tracker:
-  1. `LOCATING` — Acquiring GPS and querying nearby facilities.
-  2. `MATCHING` — Transmitting alert to hospital triage board.
-  3. `CONNECTED` — Hospital ER accepted the case.
-  4. `EN_ROUTE` — Ambulance dispatched and en route (displays driver name, vehicle number, phone).
-  5. `ARRIVED` — Paramedics on scene.
-  6. `COMPLETED` — Patient admitted to ER.
+- **app/sos/emergency.tsx:** SOS confirmation screen with consent and GPS acquisition.
+- **app/sos/provide-info.tsx:** Symptom and condition input before dispatch.
+- **app/sos/resq.tsx:** G-ONE ResQ voice companion screen.
+- **app/sos/track.tsx:** 5-stage dispatch milestone tracker with real-time hospital status.
+
+### 4.5 Hospital Discovery (app/(tabs)/hospitals.tsx)
+
+- Distance-ranked hospital list with ICU/general bed counts, specialties, and ETA.
+- Tapping a hospital opens the detail view (app/hospitals/[id].tsx).
+
+### 4.6 Medical Records (app/records/)
+
+- Upload medical documents (prescriptions, scans, reports) via expo-document-picker.
+- OCR extraction and AI clinical summary via backend endpoints.
+- Records list and detail view with processing status.
+
+### 4.7 Readiness and Education
+
+- **app/readiness/index.tsx:** Readiness score breakdown with actionable missing items.
+- **app/learn/index.tsx and [id].tsx:** Curated first-aid education content.
+
+### 4.8 Notifications (app/notifications/index.tsx)
+
+- In-app notification feed for SOS status updates and emergency alerts.
 
 ---
 
-## 5. G-ONE ResQ Voice-First Emergency Companion (New Feature Deep Dive)
+## 5. G-ONE ResQ Voice Companion
 
-Ported and adapted from the standalone G-ONE ResQ architecture ([GitHub](https://github.com/neha060314/G-ONE-ResQ.git)), this module transforms the app into an interactive emergency dispatcher companion.
+G-ONE ResQ is the voice-first AI emergency companion, embedded directly in the FastAPI backend and the mobile app.
 
-### 5.1 Hands-Free Continuous Voice Loop (Duplex Dialogue)
-- **Problem:** In past iterations, users had to tap a button to speak, then tap another button to send, repeating this every single turn. During CPR or heavy bleeding, hands cannot touch a phone screen.
-- **Solution:**
-  1. Dispatcher finishes speaking via TTS.
-  2. Microphone **automatically activates** (`isListening = true`) with green audio waves.
-  3. Patient speaks their symptoms.
-  4. When speech pauses / finishes, the app **automatically submits the utterance**.
-  5. The AI processes the response and **speaks aloud**.
-  6. As soon as the AI speech ends, the mic **automatically listens again**.
-  7. The entire first-aid triage occurs without the user touching the screen once.
+### 5.1 Architecture Layers
 
-### 5.2 Multi-Language Support & Auto-Detection
-- **Supported Languages:**
-  - `⚡ Auto-Detect`: Dynamically detects whether speech is English, Hindi, or Marathi and responds in that exact tongue.
-  - `EN (English)`: Clear clinical English guidance.
-  - `हिंदी (Hindi)`: Natural reassuring Hindi/Hinglish instructions.
-  - `मराठी (Marathi)`: Empathetic Marathi guidance (*"तातडीची मदत तुमच्या स्थानावर येत आहे..."*).
-- Language toggle pills are pinned to the header for manual override at any time.
+```
+[Patient Speech]
+       |
+       v
+[expo-speech-recognition (STT)]
+       |
+       v
+[Language Auto-Detector]
+       |
+       +------> Marathi / Hindi
+       +------> English
+       |
+       v
+[Emergency Classifier Engine]
+(9 protocol categories, keyword matching)
+       |
+       v
+[Medical Wallet Context Injection]
+(Blood group, allergies, chronic conditions)
+       |
+       v
+[Google Gemini 2.5 Flash] -- (timeout/offline) --> [Groq llama-3.3-70b] -- (fallback) --> [Deterministic Protocol Library]
+       |
+       v
+[Safety Validator]
+       |
+       v
+[Voice Response via expo-speech + Chat Bubble Feed]
+       |
+       v
+[Auto-Listen Activated (Continuous Hands-Free Loop)]
+```
 
-### 5.3 Nine Clinical First-Aid Protocols
-| Category | Severity | Key Symptoms Triggered | First-Aid Guidance Administered |
+### 5.2 Emergency Protocol Categories (9)
+
+| Category | Severity | Keywords (Sample) | Key Actions |
 |---|---|---|---|
-| **CARDIAC** | `CRITICAL` | Chest pain, pressure, left arm pain, seena dard, chhatit kal | Sit upright, loosen collar/belt, chew Aspirin if conscious & not allergic, prepare for CPR. |
-| **SEVERE BLEEDING** | `CRITICAL` | Gushing blood, arterial wound, ghaav, raktsrav | Firm direct pressure with clean cloth, elevate limb above heart, never remove soaked cloths, apply tourniquet if needed. |
-| **BREATHING DIFFICULTY**| `HIGH` | Asthma, wheezing, gasping, saans phulna, dam lagto | Sit leaning forward, 2-4 puffs of rescue inhaler, open windows, pursed-lip breathing, DO NOT lie flat. |
-| **CHOKING** | `CRITICAL` | Food stuck, throat blocked, cannot cough, ghashat adakle | 5 firm back blows between shoulder blades, alternate with 5 Heimlich abdominal thrusts until clear. |
-| **UNCONSCIOUS / CPR** | `CRITICAL` | Unresponsive, fainted, collapsed, behosh, beshuddha | Tap shoulders, check chest movement for 10s. If not breathing: 30 compressions at 100-120 bpm. If breathing: recovery position. |
-| **STROKE / NEURO** | `CRITICAL` | Facial droop, slurred speech, arm weakness, pakshaghat | FAST exam, prop head slightly up, record exact symptom onset time, DO NOT give food, water, or aspirin. |
-| **BURNS** | `HIGH` | Fire, boiling oil, scalding, acid, bhajla | Cool running tap water for 15-20 mins, do NOT use ice, butter, or paste, cover loosely with clean wrap. |
-| **TRAUMA / FRACTURE** | `HIGH` | Road accident, bone fracture, fall, haddi tootna, apghat | DO NOT move neck/spine, immobilize limb with pillows/splints, apply cloth-wrapped ice pack. |
-| **GENERAL EMERGENCY** | `MODERATE` | Severe pain, illness, distress, madad, tras | Reassure patient, keep in quiet ventilated space, maintain hydration, monitor vital responsiveness. |
+| **CARDIAC** | CRITICAL | chest pain, heart attack, dil ka daura, hruday | Sit upright, loosen clothing, give Aspirin if not allergic, CPR if unresponsive |
+| **STROKE** | CRITICAL | stroke, paralysis, face drooping, FAST, ardhaang | F.A.S.T. test, lay flat, do NOT give food/water, keep awake |
+| **BREATHING** | CRITICAL | cannot breathe, suffocation, saans nahi, dama | Sit upright at 45 deg, loosen clothing, open windows, pursed lip breathing |
+| **CHOKING** | CRITICAL | choking, food stuck, gavat adakla | 5 back blows + 5 abdominal thrusts (Heimlich), 911 if unconscious |
+| **BLEEDING** | HIGH | severe bleeding, accident, rakt, khoon bahu | Direct firm pressure for 10 min, elevate limb, tourniquet above wound |
+| **BURNS** | HIGH | fire, boiling oil, acid, scalding | Cool running water 15-20 min, no ice/butter/paste, cover loosely |
+| **TRAUMA** | HIGH | road accident, bone fracture, haddi tootna | Do NOT move neck/spine, immobilize limb, ice pack |
+| **NEUROLOGICAL** | CRITICAL | seizure, fit, convulsion, jhad | Do NOT restrain, protect head, clear space, recovery position after |
+| **GENERAL** | MODERATE | severe pain, illness, distress, madad | Reassure, quiet ventilated space, maintain hydration |
 
-### 5.4 "🚨 While Ambulance is En Route" Pre-Hospital Survival Card
-A dedicated high-visibility amber card pinned below the dispatcher visualizer displaying actionable life-saving tasks:
+### 5.3 Provider Strategy
+
+```
+Primary: Google Gemini 2.5 Flash
+      |
+      | (failure / quota / timeout)
+      v
+Secondary: Groq llama-3.3-70b-versatile
+      |
+      | (failure / quota / timeout)
+      v
+Tertiary: Deterministic Protocol Response (always succeeds offline)
+```
+
+### 5.4 "While Ambulance is En Route" Pre-Hospital Survival Card
+
+A dedicated high-visibility amber card below the dispatcher visualizer displaying:
 - Specific posture guidance (sitting upright vs. recovery position).
 - Unlocking the front gate/door for paramedics.
 - Having previous prescriptions, ECG, and emergency wallet ready.
-- Interactive checkboxes allowing the user to mark items as done.
+- Interactive checkboxes the user can mark as done.
 
-### 5.5 Real-Time Dual Voice-to-Chat & Chat-to-Voice Feed
-- **Live Captions:** While speaking, real-time speech subtitles stream across the screen.
-- **Live Chat Bubbles:** Complete transcript feed with timestamps (`🤖 G-ONE ResQ` vs. `👤 You`).
-- **Synchronized Visualizer:** 5-bar animated audio frequency visualizer reactive to voice output.
+### 5.5 Real-Time Dual Voice-to-Chat and Chat-to-Voice Feed
+
+- **Live Captions:** Real-time speech subtitles while speaking.
+- **Live Chat Bubbles:** Complete transcript feed with timestamps (G-ONE ResQ vs. You).
+- **Synchronized Visualizer:** 5-bar animated audio frequency visualizer.
 - **Hybrid Input:** Bottom text bar with Send button for noisy environments.
 
 ### 5.6 Structured Hospital Handover Summary
-Upon call completion (`End Call`):
+
+Upon call completion (End Call):
 - Consolidates patient medical context (blood group, allergies).
 - Finalizes emergency classification and urgency level.
 - Generates a clinical handover report saved to the SOS record in the database.
-- Automatically dispatches email notifications with the full conversation transcript to designated emergency contacts.
+- Automatically dispatches email notifications with the full conversation transcript to emergency contacts.
+
+### 5.7 WebSocket Interface (ResQ Service)
+
+The G-ONE ResQ module is mounted into the main G-ONE FastAPI backend:
+- Browser voice client served at: /resq/
+- WebSocket endpoint: ws://<host>/ws/emergency
+- REST health check: /api/v1/health
 
 ---
 
-## 6. Hospital Emergency Admin Dashboard (`/admin`)
+## 6. Hospital Emergency Admin Dashboard (/admin)
 
-Embedded directly inside the app at route `/admin`, the hospital dashboard is designed for tablet, desktop, or mobile emergency triage staff.
+Embedded at route /admin inside the app, designed for tablet or mobile triage staff.
 
 ### 6.1 Real-Time SOS Alert Queue
-- **3-Second Auto-Polling:** Continuously queries `GET /sos/` for active emergencies without requiring manual refreshes.
-- **Audio-Visual Strobe Alert:** Unacknowledged emergencies pulse with red priority badges and alert sounds.
-- **Patient Dossier:** Displays patient name, phone number, GPS coordinates, distance, reported symptoms, and AI understanding.
+
+- **3-Second Auto-Polling:** Continuously queries GET /sos/ for active emergencies.
+- **Audio-Visual Strobe Alert:** Unacknowledged emergencies pulse with red priority badges.
+- **Patient Dossier:** Displays patient name, phone, GPS coordinates, symptoms, AI understanding.
 
 ### 6.2 One-Touch Triage Actions
-- **Accept Case:** Hospital commits to admitting the patient. Assigns an ICU/Emergency bed.
-- **Reject Case:** Prompts for clinical rejection reason (e.g., "ICU at maximum capacity", "No neurosurgeon on duty"). The central dispatcher instantly reroutes the patient to the next closest hospital.
+
+- **Accept Case:** Hospital commits to admitting the patient; assigns an ICU/Emergency bed.
+- **Reject Case:** Prompts for clinical rejection reason. The system instantly reroutes to the next closest hospital.
 
 ### 6.3 Five-Stage Dispatch Progression
-Admins advance the emergency through 5 structured lifecycle milestones:
-1. `ACCEPTED` — ER bed reserved.
-2. `AMBULANCE_ASSIGNED` — Vehicle dispatched with driver credentials.
-3. `EN_ROUTE` — Paramedics traveling to patient GPS location.
-4. `PATIENT_PICKED_UP / ARRIVED` — Patient secured in ambulance.
-5. `COMPLETED / RESOLVED` — Patient admitted to ER; case archived.
 
-### 6.4 Resource & Bed Capacity Management
-- Tracks live counts:
-  - Total Beds vs. Available General Beds
-  - ICU Beds vs. Available ICU Beds
-  - Oxygen-Supported Emergency Beds
+1. ACCEPTED - ER bed reserved.
+2. AMBULANCE_ASSIGNED - Vehicle dispatched with driver credentials.
+3. EN_ROUTE - Paramedics traveling to patient GPS location.
+4. PATIENT_PICKED_UP / ARRIVED - Patient secured in ambulance.
+5. COMPLETED / RESOLVED - Patient admitted to ER; case archived.
+
+### 6.4 Resource and Bed Capacity Management
+
+Tracks live counts: Total Beds, Available General Beds, ICU Beds, Available ICU Beds, Oxygen-Supported Emergency Beds.
 
 ---
 
-## 7. FastAPI Backend & Service Architecture
-
-The backend is built with FastAPI for speed and asynchronous concurrency.
+## 7. FastAPI Backend and Service Architecture
 
 ### Directory Structure
-```text
+
+```
 backend/
-├── app/
-│   ├── database/
-│   │   ├── base.py           # Declarative Base
-│   │   ├── session.py        # Database session factory with PostgreSQL -> SQLite fallback
-│   │   └── migrations.py     # Schema migrations
-│   ├── models/               # SQLAlchemy ORM models
-│   │   ├── users.py
-│   │   ├── emergency_wallet.py
-│   │   ├── emergency_contact.py
-│   │   ├── hospital.py
-│   │   ├── ambulance.py
-│   │   ├── doctor.py
-│   │   ├── sos.py
-│   │   ├── medical_records.py
-│   │   └── notification.py
-│   ├── routers/              # API route controllers
-│   │   ├── auth.py
-│   │   ├── users.py
-│   │   ├── wallet.py
-│   │   ├── emergency_contacts.py
-│   │   ├── hospitals.py
-│   │   ├── ambulances.py
-│   │   ├── doctors.py
-│   │   ├── sos.py
-│   │   ├── voice.py          # Voice calling & G-ONE ResQ endpoints
-│   │   ├── medical_records.py
-│   │   └── notifications.py
-│   ├── schemas/              # Pydantic v2 validation models
-│   └── services/             # Business logic layer
-│       ├── voice_service.py      # Agora / Bland AI legacy bridge
-│       ├── gone_resq_service.py  # G-ONE ResQ Multi-turn Engine
-│       ├── email_service.py      # Resend SMTP transcript dispatch
-│       └── ai_service.py         # OCR & Document summarizer
-├── lifelink_ai.db            # Local SQLite fallback database
-├── requirements.txt          # Python package manifest
-└── Procfile                  # Cloud deployment configuration
+|-- app/
+|   |-- database/
+|   |   |-- base.py           Declarative Base
+|   |   |-- connection.py     Engine factory with PostgreSQL -> SQLite fallback
+|   |   |-- session.py        Database session factory
+|   |   |-- migrations.py     Lightweight schema migrations (new columns)
+|   |   `-- seeder.py         Auto-seed verified accounts and hospital network
+|   |-- models/               SQLAlchemy ORM models
+|   |   |-- users.py
+|   |   |-- emergency_wallet.py
+|   |   |-- emergency_contact.py
+|   |   |-- hospital.py
+|   |   |-- ambulance.py
+|   |   |-- doctor.py
+|   |   |-- sos.py            (includes sos_rejection)
+|   |   |-- medical_record.py
+|   |   `-- notification.py
+|   |-- routers/              API route controllers (12 modules)
+|   |   |-- users.py
+|   |   |-- emergency_wallet.py
+|   |   |-- emergency_contacts.py
+|   |   |-- hospitals.py
+|   |   |-- ambulances.py
+|   |   |-- doctors.py
+|   |   |-- sos.py
+|   |   |-- voice.py          G-ONE ResQ endpoints
+|   |   |-- medical_records.py
+|   |   |-- notifications.py
+|   |   |-- emergency_response.py
+|   |   `-- emergency_orchestration.py
+|   |-- schemas/              Pydantic v2 validation models
+|   |-- services/             Business logic layer
+|   |   |-- gone_resq_service.py   G-ONE ResQ multi-turn engine
+|   |   |-- voice_service.py       Bland AI phone call bridge (legacy)
+|   |   |-- email_service.py       Resend SMTP transcript dispatch
+|   |   |-- sos_service.py         SOS orchestration and hospital ranking
+|   |   |-- emergency_contact_service.py
+|   |   |-- emergency_orchestration_service.py
+|   |   |-- emergency_response_service.py
+|   |   |-- emergency_wallet_service.py
+|   |   |-- medical_record_service.py
+|   |   |-- notification_service.py
+|   |   |-- ocr_service.py         Pytesseract OCR for medical records
+|   |   |-- ai_pipeline_service.py
+|   |   `-- user_service.py
+|   `-- main.py               FastAPI entry point
+|-- resq_service/             Integrated G-ONE ResQ voice AI service
+|-- gone_ai_module/           Legacy AI triage module
+|-- lifelink_ai.db            Local SQLite fallback database
+|-- requirements.txt
+`-- .env.example
 ```
 
 ### Resilient Dual-Database Engine
-In [`backend/app/database/session.py`](backend/app/database/session.py), the backend attempts to connect to the primary PostgreSQL connection pool (Supabase). If cloud connection drops, network times out, or credentials expire, it **automatically and gracefully falls back to local SQLite (`lifelink_ai.db`)** without crashing.
+
+In backend/app/database/connection.py, the backend:
+1. Attempts PostgreSQL connection with a 5-second timeout.
+2. On any failure, automatically falls back to SQLite (lifelink_ai.db) without crashing.
+3. Logs a warning when failover occurs.
+
+### Auto-Seeder
+
+On every startup, backend/app/database/seeder.py ensures:
+- Primary user: premkakade2005@gmail.com / Password123!
+- Demo user: demo@lifelink.ai / Demo123!
+- Hospital admin credentials
+- Default hospital network records
 
 ---
 
 ## 8. Complete API Endpoints Catalog
 
-### Authentication & Users
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/users/` | Register new user account (`profile_photo` optional) |
-| `POST` | `/users/login` | Authenticate with email/password; returns JWT access token |
-| `GET` | `/users/{user_id}` | Fetch user profile data |
-| `PUT` | `/users/{user_id}` | Update user profile fields |
-| `POST` | `/users/{user_id}/profile-photo` | Upload multipart profile avatar |
+### Authentication and Users
 
-### Emergency Wallet & Contacts
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/wallet/{user_id}` | Fetch patient emergency wallet (blood group, allergies, etc.) |
-| `PUT` | `/wallet/{user_id}` | Update emergency wallet data |
-| `GET` | `/emergency-contacts/` | List emergency contacts for authenticated user |
-| `POST` | `/emergency-contacts/` | Create a new emergency contact |
-| `DELETE`| `/emergency-contacts/{id}` | Remove an emergency contact |
+| POST | /users/ | Register new user account (profile_photo optional) |
+| POST | /users/login | Authenticate with email/password; returns JWT access token |
+| GET | /users/{user_id} | Fetch user profile data |
+| PUT | /users/{user_id} | Update user profile fields |
+| POST | /users/{user_id}/profile-photo | Upload multipart profile avatar |
 
-### Emergency SOS & Dispatch
+### Emergency Wallet and Contacts
+
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/sos/` | Trigger instant emergency SOS with GPS coordinates and description |
-| `GET` | `/sos/` | List all active SOS alerts (used by Admin Dashboard polling) |
-| `GET` | `/sos/my-active` | Retrieve authenticated patient's current active SOS |
-| `GET` | `/sos/my-completed` | Retrieve authenticated patient's past SOS history |
-| `POST` | `/sos/{sos_id}/accept` | Hospital accepts emergency case |
-| `POST` | `/sos/{sos_id}/reject` | Hospital rejects case with clinical justification |
-| `PATCH`| `/sos/{sos_id}/status` | Update dispatch status milestone (`EN_ROUTE`, `ARRIVED`, etc.) |
-| `PATCH`| `/sos/{sos_id}/location`| Update patient's live moving GPS coordinates |
-| `PUT` | `/sos/{sos_id}/resolve` | Mark SOS emergency case as resolved |
+| GET | /wallet/{user_id} | Fetch patient emergency wallet |
+| PUT | /wallet/{user_id} | Update emergency wallet data |
+| GET | /emergency-contacts/ | List emergency contacts for authenticated user |
+| POST | /emergency-contacts/ | Create a new emergency contact |
+| DELETE | /emergency-contacts/{id} | Remove an emergency contact |
+
+### Emergency SOS and Dispatch
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | /sos/ | Trigger instant emergency SOS with GPS coordinates |
+| GET | /sos/ | List all active SOS alerts (Admin Dashboard polling) |
+| GET | /sos/my-active | Authenticated patient's current active SOS |
+| GET | /sos/my-completed | Authenticated patient's past SOS history |
+| POST | /sos/{sos_id}/accept | Hospital accepts emergency case |
+| POST | /sos/{sos_id}/reject | Hospital rejects case with clinical justification |
+| PATCH | /sos/{sos_id}/status | Update dispatch status milestone |
+| PATCH | /sos/{sos_id}/location | Update patient's live GPS coordinates |
+| PUT | /sos/{sos_id}/resolve | Mark SOS emergency case as resolved |
 
 ### G-ONE ResQ AI Voice Companion
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/voice/resq/protocols` | Fetch library of 9 clinical first-aid emergency protocols |
-| `POST` | `/voice/resq/turn` | Process interactive speech turn (multi-lingual triage & guidance) |
-| `POST` | `/voice/resq/handover` | Finalize emergency call, generate handover report, and dispatch emails |
-| `GET` | `/voice/transcript/{sos_id}`| Retrieve complete audio transcript record and call summary |
 
-### Hospitals, Ambulances & Doctors
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/hospitals/` | List all registered hospitals with bed availability and specialties |
-| `GET` | `/ambulances/` | List ambulances with availability and GPS status |
-| `GET` | `/doctors/` | List emergency room physicians on duty |
+| GET | /voice/resq/protocols | Fetch library of 9 clinical first-aid emergency protocols |
+| POST | /voice/resq/turn | Process interactive speech turn (multi-lingual triage and guidance) |
+| POST | /voice/resq/handover | Finalize emergency call, generate handover report, dispatch emails |
+| GET | /voice/transcript/{sos_id} | Retrieve complete audio transcript record and call summary |
 
-### Medical Records & AI OCR
+### ResQ WebSocket Service
+
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/medical-records/upload` | Multipart file upload for prescription/scan/report |
-| `GET` | `/medical-records/{user_id}`| List all medical documents for a patient |
-| `POST` | `/medical-records/record/{id}/process-ocr` | Run OCR extraction and generate AI clinical summary |
+| WS | /ws/emergency | Real-time bidirectional voice conversation |
+| GET | /api/v1/health | ResQ service health check |
+
+### Hospitals, Ambulances and Doctors
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /hospitals/ | List all registered hospitals with bed availability |
+| GET | /ambulances/ | List ambulances with availability and GPS status |
+| GET | /doctors/ | List emergency room physicians on duty |
+
+### Medical Records and AI OCR
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | /medical-records/upload | Multipart file upload for prescription/scan/report |
+| GET | /medical-records/{user_id} | List all medical documents for a patient |
+| POST | /medical-records/record/{id}/process-ocr | Run OCR extraction and generate AI clinical summary |
+
+### System
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | / | API health confirmation message |
+| GET | /health | Lightweight readiness probe |
 
 ---
 
-## 9. Database Models & Entity Relationships
+## 9. Database Models and Entity Relationships
 
-```text
-[User] 1 ──── 1 [EmergencyWallet]
-  │
-  ├──── N [EmergencyContact]
-  ├──── N [MedicalRecord]
-  └──── N [SOS] ────── 1 [Hospital]
-           │
-           ├───── 1 [Ambulance]
-           ├───── 1 [Doctor]
-           └───── N [HospitalRejection]
+```
+[User] 1 -- 1 [EmergencyWallet]
+  |
+  |-- N [EmergencyContact]
+  |-- N [MedicalRecord]
+  `-- N [SOS] -- 1 [Hospital]
+           |
+           |-- 1 [Ambulance]
+           |-- 1 [Doctor]
+           `-- N [SOSRejection]
 ```
 
 ### Key Table Schemas
 
-#### `users`
-- `user_id` (PK, Integer, Auto-increment)
-- `full_name` (String, required)
-- `email` (String, unique, indexed)
-- `hashed_password` (String, BCrypt)
-- `phone_number` (String, indexed)
-- `blood_group` (String, optional)
-- `date_of_birth` (Date, optional)
-- `profile_photo` (String, optional)
+#### users
+- user_id (PK, Integer, Auto-increment)
+- full_name (String, required)
+- email (String, unique, indexed)
+- password_hash (String, BCrypt)
+- phone_number (String, indexed)
+- blood_group (String, optional)
+- date_of_birth (Date, optional)
+- profile_photo (String, optional)
 
-#### `emergency_wallet`
-- `wallet_id` (PK)
-- `user_id` (FK -> `users.user_id`)
-- `blood_group` (String)
-- `allergies` (Text)
-- `current_medications` (Text)
-- `chronic_conditions` (Text)
-- `emergency_notes` (Text)
+#### emergency_wallet
+- wallet_id (PK)
+- user_id (FK -> users.user_id)
+- blood_group (String)
+- allergies (Text)
+- current_medications (Text)
+- chronic_conditions (Text)
+- emergency_notes (Text)
 
-#### `sos_requests`
-- `sos_id` (PK)
-- `user_id` (FK -> `users.user_id`)
-- `latitude`, `longitude` (Float, GPS coordinates)
-- `description` (Text, symptoms reported)
-- `status` (`ACTIVE`, `ACCEPTED`, `RESOLVED`, `CANCELLED`)
-- `dispatch_status` (`SEARCHING`, `AMBULANCE_ASSIGNED`, `EN_ROUTE`, `ARRIVED`, `COMPLETED`)
-- `accepted_hospital_id` (FK -> `hospitals.hospital_id`)
-- `assigned_ambulance_id` (FK -> `ambulances.ambulance_id`)
-- `ai_emergency_understanding` (String, clinical category)
-- `ai_severity` (`CRITICAL`, `HIGH`, `MODERATE`)
-- `call_transcript` (Text, full multi-turn dialogue log)
-- `call_summary` (Text, structured clinical handover)
-- `created_at` (DateTime, UTC)
-
----
-
-## 10. AI, Speech, & Voice Engine Architecture
-
-```
-[Patient Speech] 
-       │
-       ▼
-[Speech Recognition (STT)] ──> Language Detector (_detect_language)
-                                       │
-                         ┌─────────────┴─────────────┐
-                         ▼                           ▼
-                 [Marathi / Hindi]               [English]
-                         │                           │
-                         └─────────────┬─────────────┘
-                                       │
-                                       ▼
-                       [Emergency Classifier Engine]
-                       (Keywords: cardiac, stroke, etc.)
-                                       │
-                                       ▼
-                     [Medical Wallet Context Injection]
-                     (Blood group, allergies, conditions)
-                                       │
-                                       ▼
-                     [Google Gemini 2.5 Flash API]
-                     (Safe, protocol-bound prompt)
-                                       │ (Fallback on timeout / offline)
-                                       ▼
-                     [Deterministic Protocol Library]
-                                       │
-                                       ▼
-                     [Audio Response Generated]
-                                       │
-                         ┌─────────────┴─────────────┐
-                         ▼                           ▼
-              [Live Chat Bubble Feed]      [Native TTS (Expo-Speech)]
-              (Subtitle & Transcript)      (Voice spoken aloud)
-                                                     │
-                                                     ▼
-                                       [Auto-Listen Activated]
-                                       (Continuous Hands-Free Loop)
-```
+#### sos_requests
+- sos_id (PK)
+- user_id (FK -> users.user_id)
+- latitude, longitude (Float, GPS coordinates)
+- description (Text, symptoms reported)
+- status (ACTIVE, ACCEPTED, RESOLVED, CANCELLED)
+- dispatch_status (SEARCHING, AMBULANCE_ASSIGNED, EN_ROUTE, ARRIVED, COMPLETED)
+- accepted_hospital_id (FK -> hospitals.hospital_id)
+- assigned_ambulance_id (FK -> ambulances.ambulance_id)
+- ai_emergency_understanding (String, clinical category)
+- ai_severity (CRITICAL, HIGH, MODERATE)
+- call_transcript (Text, full multi-turn dialogue log)
+- call_summary (Text, structured clinical handover)
+- created_at (DateTime, UTC)
 
 ---
 
-## 11. Network Security, Android Policy & Offline Resilience
+## 10. AI, Speech, and Voice Engine Architecture
+
+### Frontend: Three-Layer Emergency AI Triage
+
+The frontend emergencyAiTriage.ts implements:
+1. **Primary:** Cloud LifeLink Backend (/voice/resq/turn)
+2. **Secondary:** Direct Google Gemini Generative API (zero-cold-start, live streaming chat)
+3. **Tertiary:** Comprehensive Local Clinical First-Aid Protocol Engine (100% offline-ready)
+
+### Backend: G-ONE ResQ gone_resq_service.py
+
+- Protocol-first: The protocol engine determines allowed actions before Gemini is queried.
+- LLM second: Gemini / Groq converts approved information into natural conversational language.
+- Safety before speech: Every generated response is validated before it reaches the patient.
+- Graceful degradation: Loss of an external provider never crashes the emergency session.
+- No hallucinated patient data: Unavailable patient information remains unavailable.
+
+---
+
+## 11. Network Security, Android Policy, and Offline Resilience
 
 ### 11.1 Android Cleartext Traffic Policy
-- **Android 9+ Constraint:** Modern Android enforces `NetworkSecurityConfig` that blocks all unencrypted `http://` traffic with `CLEARTEXT communication not permitted`.
-- **Solution Configured:**
-  - In [`frontend/app.json`](frontend/app.json): `"usesCleartextTraffic": true` is enabled under `"android"`.
-  - In [`frontend/src/services/http.ts`](frontend/src/services/http.ts): Default API URL defaults strictly to encrypted HTTPS (`https://gone-backend.onrender.com`).
+
+- In frontend/app.json: "usesCleartextTraffic": true is enabled under "android" for local development.
+- Production API URL defaults to HTTPS (https://lifelink-backend-1tzq.onrender.com).
+- EAS preview build injects the HTTPS URL automatically via eas.json env vars.
 
 ### 11.2 Cloud Cold-Start Spin-Up Resilience
-- **Render Free Tier Behavior:** Containers spin down after 15 minutes of inactivity and take 45–60 seconds to boot on incoming traffic.
-- **Solution Configured:**
-  - Extended client request timeout in `frontend/src/services/http.ts` from 30 seconds to **90 seconds** (`90000ms`), preventing premature aborts during cloud spin-up.
+
+- Render free-tier containers spin down after 15 minutes of inactivity and take 45-60 seconds to boot.
+- Client request timeout in frontend/src/services/http.ts is set to 90 seconds (90000ms).
+- The dynamic Expo Go URL resolver in http.ts follows the laptop's current Wi-Fi IP automatically.
 
 ### 11.3 Offline Fail-Safe Fallbacks
-1. **Medical Wallet:** Persisted in local encrypted device storage. Displays full emergency info and QR code without internet.
-2. **First-Aid Guidance:** Hardcoded deterministic protocols in `GOneResQCallModal.tsx`. If the phone loses cell coverage, first-aid advice continues to display and speak locally.
+
+1. **Medical Wallet:** Persisted in local encrypted device storage. Displays full emergency info and QR without internet.
+2. **First-Aid Guidance:** Hardcoded deterministic protocols in GOneResQCallModal.tsx and emergencyAiTriage.ts. If the phone loses cell coverage, first-aid advice continues to display and speak locally.
 3. **Database Fallback:** Backend automatically fails over to local SQLite if cloud PostgreSQL is unreachable.
+4. **Frontend AI Triage Fallback:** Three-layer triage means at least one tier always responds.
 
 ---
 
-## 12. Environment Configuration & Deployment Guide
+## 12. Environment Configuration and Deployment
 
-### 12.1 Backend Environment Variables (`backend/.env`)
+### 12.1 Backend Environment Variables (backend/.env)
+
 ```ini
 # Database (Supabase PostgreSQL pooler or fallback SQLite)
 DATABASE_URL=postgresql://user:password@host:6543/postgres
 
-# JWT Secret & Expiry
+# JWT Secret and Expiry
 JWT_SECRET_KEY=lifelink-super-secret-key
 JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
@@ -489,8 +573,8 @@ JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
 # Google Gemini API Key
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# Agora RTC Audio Calling (Optional)
-AGORA_APP_ID=8d9be73b66634d248adac257e0871278
+# Agora RTC Audio Calling
+AGORA_APP_ID=your_agora_app_id
 AGORA_APP_CERTIFICATE=your_agora_certificate
 
 # Email Alerts (Resend SMTP)
@@ -498,47 +582,77 @@ SMTP_HOST=smtp.resend.com
 SMTP_PORT=587
 SMTP_USERNAME=resend
 SMTP_PASSWORD=your_resend_api_key
+
+# Bland AI Phone Calls (optional legacy)
+BLAND_API_KEY=your_bland_api_key_here
+BLAND_VOICE=maya
+ENABLE_SOS_VOICE_CALLS=false
+PUBLIC_BACKEND_URL=https://lifelink-backend-1tzq.onrender.com
 ```
 
-### 12.2 Frontend Environment Configuration (`frontend/.env` & `frontend/eas.json`)
+### 12.2 Frontend Environment Configuration
+
+**frontend/.env** (local development only):
 ```ini
-# Production Cloud Backend URL
-EXPO_PUBLIC_API_URL=https://gone-backend.onrender.com
-EXPO_PUBLIC_AGORA_APP_ID=8d9be73b66634d248adac257e0871278
+EXPO_PUBLIC_API_URL=http://<your-local-ip>:8000
+EXPO_PUBLIC_AGORA_APP_ID=your_agora_app_id
+```
+
+**frontend/eas.json** (preview build):
+```json
+"preview": {
+  "env": {
+    "EXPO_PUBLIC_API_URL": "https://lifelink-backend-1tzq.onrender.com"
+  }
+}
 ```
 
 ### 12.3 How to Run Locally
 
 #### 1. Start the FastAPI Backend
+
 ```powershell
-cd c:\Users\Admin\OneDrive\Desktop\GOne\backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload
 ```
-*API Swagger Documentation will be available at: `http://localhost:8000/docs`*
+
+API Swagger Documentation available at: http://localhost:8000/docs
 
 #### 2. Start the Frontend Metro Server
+
 ```powershell
-cd c:\Users\Admin\OneDrive\Desktop\GOne\frontend
+cd frontend
 npx expo start
+```
+
+#### 3. Use the startup script
+
+```powershell
+./start.ps1
 ```
 
 ### 12.4 How to Build the Standalone Android APK
 
-EAS Build is configured in [`frontend/eas.json`](frontend/eas.json) with `"buildType": "apk"` under the `preview` profile:
+EAS Build is configured in frontend/eas.json with "buildType": "apk" under the preview profile:
 
 ```powershell
-cd c:\Users\Admin\OneDrive\Desktop\GOne\frontend
+cd frontend
 npx eas-cli build --platform android --profile preview
 ```
 
-The cloud builder packages the entire React Native bundle, native audio drivers, and dependencies into an installable `.apk` file downloadable directly to any Android device from the [EAS Project Dashboard](https://expo.dev/accounts/premexe/projects/lifelink-ai-plus/builds).
+EAS project: https://expo.dev/accounts/premexe/projects/lifelink-ai-plus/builds
+EAS CLI version requirement: >= 24.7.0
 
 ---
 
 ## 13. Summary of Latest Features Added
 
-1. **Continuous Hands-Free Dialogue:** No repeated button taps required; auto-listens when AI finishes speaking, auto-submits on speech completion.
-2. **Multi-Language Support with Auto-Detect:** Seamless voice and text interaction across **Marathi (मराठी)**, **Hindi (हिंदी)**, and **English**.
-3. **"🚨 While Ambulance is En Route" Guide:** Dedicated high-priority pre-hospital checklist for bystanders while awaiting emergency units.
-4. **Real-Time Synchronized Chat Feed:** Simultaneous speech-to-text transcript bubbles, sound-wave animations, and audio speech synthesis.
-5. **Network Policy & Cold-Start Hardening:** Full cleartext traffic compliance and 90-second timeout handling for smooth production cloud operations.
+1. **G-ONE ResQ Fully Integrated into Main Backend:** The resq_service WebSocket router and static browser client are now mounted directly into the main FastAPI server (no separate service needed).
+2. **Continuous Hands-Free Dialogue:** No repeated button taps required; auto-listens when AI finishes speaking, auto-submits on speech completion.
+3. **Three-Language Support with Auto-Detect:** Seamless voice and text interaction across Marathi, Hindi, and English.
+4. **Groq Secondary AI Provider:** When Gemini is unavailable or quota-limited, the system falls back to Groq (llama-3.3-70b-versatile) before the deterministic engine.
+5. **Auto-Seeder on Every Startup:** Verified demo accounts and hospital network are guaranteed on every cold start or container restart.
+6. **"While Ambulance is En Route" Guide:** Dedicated high-priority pre-hospital interactive checklist.
+7. **Real-Time Synchronized Chat Feed:** Simultaneous speech-to-text transcript bubbles, sound-wave animations, and audio speech synthesis.
+8. **EAS APK Build Pipeline:** Full EAS configuration with preview APK profile pointing to the production Render backend URL.
+9. **Network Policy and Cold-Start Hardening:** Full cleartext traffic compliance and 90-second timeout handling for smooth Render cloud operations.
+10. **Agora RTC Token Generation:** Backend generates Agora RTC tokens for in-app audio calling without telephone numbers.
