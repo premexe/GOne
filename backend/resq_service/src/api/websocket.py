@@ -38,8 +38,8 @@ def _save_native_resq_handover(session) -> tuple[bool, str]:
             )
         finally:
             db.close()
-        if email_result and email_result.get("sent", 0) > 0:
-            return True, "Transcript handover saved and email was accepted for delivery."
+        if email_result and (email_result.get("queued") or email_result.get("sent", 0) > 0):
+            return True, "Transcript saved. Email delivery is processing in the background."
         detail = (email_result or {}).get("configuration_error") or (email_result or {}).get("error")
         return False, detail or "Transcript was saved, but no email recipient accepted delivery."
     except Exception as exc:
