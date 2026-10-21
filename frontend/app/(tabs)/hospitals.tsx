@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Platform } from 'react-native';
 import { MapPin, Navigation, Phone, Search, Sparkles, ChevronRight, List, Map } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -12,6 +12,7 @@ if (Platform.OS !== 'web') {
 }
 
 export default function HospitalsScreen() {
+  const [mapError, setMapError] = useState<string | null>(null);
   const {
     hospitals,
     selectedSpecialty,
@@ -35,7 +36,7 @@ export default function HospitalsScreen() {
   const hospitalMarkers = filteredHospitals.map((hospital) => ({
     name: hospital.name.replace(/['<>&]/g, ''), lat: hospital.lat, lng: hospital.lng,
   }));
-  const mapHtml = `<!doctype html><html><head><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/><style>html,body,#map{height:100%;margin:0} .label{font:600 12px system-ui}</style></head><body><div id="map"></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>const points=${JSON.stringify(hospitalMarkers)};const map=L.map('map');const bounds=[];points.forEach(p=>{L.marker([p.lat,p.lng]).addTo(map).bindPopup('<b>'+p.name+'</b>');bounds.push([p.lat,p.lng])});bounds.length?map.fitBounds(bounds,{padding:[28,28],maxZoom:14}):map.setView([19.7,72.77],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);</script></body></html>`;
+  const mapHtml = useMemo(() => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/><style>html,body,#map{height:100%;width:100%;margin:0;background:#eef3f4}.leaflet-container{font-family:system-ui,sans-serif}</style></head><body><div id="map"></div><script>window.onerror=function(message){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'error',message:String(message)}));};</script><script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script><script>if(!window.L){throw new Error('Map library could not load');}const points=${JSON.stringify(hospitalMarkers)};const map=L.map('map');L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);const bounds=[];points.forEach(p=>{L.marker([p.lat,p.lng]).addTo(map).bindPopup('<b>'+p.name+'</b>');bounds.push([p.lat,p.lng]);});bounds.length?map.fitBounds(bounds,{padding:[28,28],maxZoom:14}):map.setView([19.7,72.77],12);setTimeout(function(){map.invalidateSize();},250);</script></body></html>`, [hospitalMarkers]);
 
   return (
     <View style={styles.container}>
@@ -106,11 +107,12 @@ export default function HospitalsScreen() {
         {/* Interactive map view */}
         {viewMode === 'map' ? (
           <View style={styles.mapContainer}>
-            {Platform.OS === 'web' ? <iframe title="Nearby hospitals" srcDoc={mapHtml} style={{ width: '100%', height: '100%', border: 'none', borderRadius: 16 }} /> : NativeWebView ? <NativeWebView originWhitelist={['*']} source={{ html: mapHtml }} style={{ width: '100%', height: '100%', borderRadius: 16 }} /> : <>
+            {Platform.OS === 'web' ? <iframe title="Nearby hospitals" srcDoc={mapHtml} style={{ width: '100%', height: '100%', border: 'none', borderRadius: 16 }} /> : NativeWebView ? <NativeWebView originWhitelist={['*']} source={{ html: mapHtml }} javaScriptEnabled domStorageEnabled mixedContentMode="compatibility" onError={() => setMapError('Map could not load. Check your internet connection and try again.')} onMessage={(event: any) => { try { if (JSON.parse(event.nativeEvent.data).type === 'error') setMapError('Map could not load. Check your internet connection and try again.'); } catch (_) {} }} style={{ width: '100%', height: '100%', borderRadius: 16 }} /> : <>
               <MapPin size={36} color={COLORS.brand} />
-              <Text style={styles.mapText}>Hospital locations are available on web</Text>
+              <Text style={styles.mapText}>Map is unavailable in this installed build</Text>
               <Text style={styles.mapSubtext}>{filteredHospitals.length} matching hospitals</Text>
             </>}
+            {mapError ? <View style={styles.mapError}><Text style={styles.mapErrorText}>{mapError}</Text></View> : null}
           </View>
         ) : (
           /* Hospital Cards List */
@@ -281,6 +283,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.muted,
     marginTop: 4,
+  },
+  mapError: {
+    position: 'absolute', left: 12, right: 12, bottom: 12,
+    backgroundColor: 'rgba(255,255,255,0.94)', padding: 10, borderRadius: 10,
+  },
+  mapErrorText: {
+    color: COLORS.status.red, fontSize: 12, fontWeight: '700', textAlign: 'center',
   },
   listContainer: {
     gap: 16,

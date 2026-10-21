@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 type SpeechRecognitionModule = {
   isRecognitionAvailable: () => boolean;
   requestPermissionsAsync: () => Promise<{ granted: boolean }>;
@@ -48,7 +50,7 @@ function getSpeechRecognitionModule(): SpeechRecognitionModule | null {
 }
 
 export function isSpeechRecognitionAvailable(): boolean {
-  if (typeof window !== 'undefined') return Boolean(getBrowserRecognitionConstructor());
+  if (Platform.OS === 'web') return Boolean(getBrowserRecognitionConstructor());
   return getSpeechRecognitionModule()?.isRecognitionAvailable() ?? false;
 }
 
@@ -69,7 +71,7 @@ export async function startSpeechRecognition(options: {
   onError: (message: string) => void;
 }): Promise<{ stop: () => void; abort: () => void } | null> {
   const BrowserRecognition = getBrowserRecognitionConstructor();
-  if (typeof window !== 'undefined' && BrowserRecognition) {
+  if (Platform.OS === 'web' && BrowserRecognition) {
     const recognition = new BrowserRecognition();
     let active = true;
 
@@ -109,14 +111,20 @@ export async function startSpeechRecognition(options: {
 
   const speechRecognition = getSpeechRecognitionModule();
   if (!speechRecognition) {
-    options.onError('Voice transcription is not included in this app build. Install the latest G-ONE build and try again.');
+    options.onError('Voice transcription is not included in this installed build. Install the latest G-ONE APK, allow Microphone permission, then try again.');
     return null;
   }
 
   // This requests both microphone permission and the separate iOS speech
   // recognition permission. Requesting only RECORD_AUDIO left iOS unable to
   // start transcription.
-  const permission = await speechRecognition.requestPermissionsAsync();
+  let permission: { granted: boolean };
+  try {
+    permission = await speechRecognition.requestPermissionsAsync();
+  } catch (error) {
+    options.onError(error instanceof Error ? error.message : 'Microphone permission could not be requested.');
+    return null;
+  }
   if (!permission.granted) {
     options.onError('Microphone permission is required to transcribe a voice note. Allow it in Settings and try again.');
     return null;
