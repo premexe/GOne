@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // Read API URL from .env if present
-let apiUrl = 'https://gone-backend.onrender.com';
+let apiUrl = 'https://lifelink-backend-1tzq.onrender.com';
 try {
   const envContent = fs.readFileSync(path.resolve(process.cwd(), '.env'), 'utf-8');
   const match = envContent.match(/VITE_API_BASE_URL=(.+)/);

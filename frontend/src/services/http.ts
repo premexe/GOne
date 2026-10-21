@@ -18,7 +18,7 @@ const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 const isDeviceLocalhost = Platform.OS !== 'web' && Boolean(configuredApiUrl?.match(/localhost|127\.0\.0\.1/));
 export const API_URL = (!isDeviceLocalhost ? configuredApiUrl : null)
   || (__DEV__ ? getExpoGoApiUrl() : null)
-  || 'https://gone-backend.onrender.com';
+  || 'https://lifelink-backend-1tzq.onrender.com';
 
 let token: string | null = null;
 
