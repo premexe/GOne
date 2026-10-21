@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
+import httpx
 
 from sqlalchemy.orm import Session
 
@@ -46,8 +47,30 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "LifeLink Emergency <noreply@lifelink.ai>")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 
 _SMTP_READY = all([SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD])
+
+
+def _send_resend_api(to_email: str, subject: str, html_body: str) -> bool:
+    """HTTPS fallback for Resend when an SMTP connection times out on Render."""
+    api_key = RESEND_API_KEY or (SMTP_PASSWORD if SMTP_HOST.lower() == "smtp.resend.com" else "")
+    if not api_key:
+        return False
+    try:
+        response = httpx.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"from": EMAIL_FROM, "to": [to_email], "subject": subject, "html": html_body},
+            timeout=12.0,
+        )
+        if response.status_code in (200, 201):
+            logger.info("[EMAIL SENT VIA RESEND API] To: %s", to_email)
+            return True
+        logger.error("[RESEND API FAILED] To: %s | Status: %s | Response: %s", to_email, response.status_code, response.text)
+    except Exception as api_error:
+        logger.error("[RESEND API FAILED] To: %s | Error: %s", to_email, api_error)
+    return False
 
 
 # ── HTML Template ─────────────────────────────────────────────────────────────
@@ -216,7 +239,8 @@ def _send_smtp(to_email: str, subject: str, html_body: str) -> bool:
         return True
     except Exception as e:
         logger.error("[EMAIL FAILED] To: %s | Error: %s", to_email, e)
-        return False
+        # Render can time out on outbound SMTP while HTTPS remains available.
+        return _send_resend_api(to_email, subject, html_body)
 
 
 class EmailService:

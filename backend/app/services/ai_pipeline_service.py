@@ -51,6 +51,22 @@ def _import_pipeline():
         raise
 
 
+def _safe_summary_fallback(emergency_description: str) -> dict:
+    """Return a non-diagnostic summary when the legacy AI package is unavailable.
+
+    ResQ still provides the live protocol guidance; this prevents a package-name
+    collision from discarding a completed SOS handover or flooding deployment logs.
+    """
+    description = (emergency_description or "Emergency voice transcript recorded.").strip()
+    return {
+        "emergency_understanding": description[:1000],
+        "severity": "UNKNOWN",
+        "required_medical_capability": "Emergency clinical assessment required",
+        "ai_health_summary": "Live ResQ guidance was provided; clinician review is required.",
+        "emergency_report": "Automated ResQ transcript handover completed. Clinician review required.",
+    }
+
+
 def _build_wallet_dict(wallet: EmergencyWallet | None) -> dict:
     """Convert ORM wallet to the AI Input Contract shape."""
     if wallet is None:
@@ -133,7 +149,11 @@ class AIPipelineService:
         }
 
         # --- Run the pipeline ---
-        run_ai_pipeline = _import_pipeline()
+        try:
+            run_ai_pipeline = _import_pipeline()
+        except ModuleNotFoundError:
+            logger.warning("Legacy AI summary module is unavailable; using safe ResQ handover summary.")
+            return _safe_summary_fallback(emergency_description)
         response = run_ai_pipeline(payload)
 
         logger.info(
