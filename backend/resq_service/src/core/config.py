@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash"
     
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    # Llama 3.3 70B was retired from the Groq developer tier.
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
     
     # STT Provider
     SARVAM_API_KEY: str = ""

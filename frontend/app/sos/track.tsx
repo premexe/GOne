@@ -65,13 +65,9 @@ export default function TrackEmergencyScreen() {
   const ambulance = activeRequest?.assignedAmbulance;
   const doctor = activeRequest?.assignedDoctor;
 
-  // Poll for SOS updates every 2.5 seconds
+  // The store owns one shared polling loop for the entire app.
   useEffect(() => {
-    refreshActiveEmergency();
-    const timer = setInterval(() => {
-      refreshActiveEmergency();
-    }, 2500);
-    return () => clearInterval(timer);
+    void refreshActiveEmergency();
   }, [refreshActiveEmergency]);
 
   const normDispatch = ((activeRequest as any)?.dispatchStatus || '').toUpperCase();

@@ -17,7 +17,18 @@ interface EmergencyState {
   endEmergency: () => Promise<void>;
 }
 
-let pollingTimer: any = null;
+let pollingTimer: ReturnType<typeof setInterval> | null = null;
+const SOS_POLL_INTERVAL_MS = 5000;
+
+const stopPolling = () => {
+  if (pollingTimer) clearInterval(pollingTimer);
+  pollingTimer = null;
+};
+
+const startPolling = (refresh: () => Promise<void>) => {
+  if (pollingTimer) return;
+  pollingTimer = setInterval(() => { void refresh(); }, SOS_POLL_INTERVAL_MS);
+};
 
 export const useEmergencyStore = create<EmergencyState>((set, get) => ({
   isEmergencyActive: false,
@@ -103,16 +114,8 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
       }
     })();
 
-    // Start 3-second live polling loop for real-time hospital acceptance & ambulance dispatch
-    if (pollingTimer) clearInterval(pollingTimer);
-    pollingTimer = setInterval(async () => {
-      if (!get().isEmergencyActive) {
-        clearInterval(pollingTimer);
-        pollingTimer = null;
-        return;
-      }
-      await get().refreshActiveEmergency();
-    }, 3000);
+    // One shared loop avoids duplicate requests from multiple SOS screens.
+    startPolling(get().refreshActiveEmergency);
 
     return request;
   },
@@ -122,9 +125,10 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
       const activeRequest = await api.getActiveEmergencyRequest();
       if (activeRequest) {
         set({ activeRequest, isEmergencyActive: activeRequest.status !== 'closed' });
+        if (activeRequest.status !== 'closed') startPolling(get().refreshActiveEmergency);
       } else {
         // Server says no active SOS — clear stale local state & stop polling
-        if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
+        stopPolling();
         set({ isEmergencyActive: false, activeRequest: null, selectedSymptoms: [], notes: '' });
       }
     } catch (error) {
@@ -133,10 +137,7 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
   },
 
   endEmergency: async () => {
-    if (pollingTimer) {
-      clearInterval(pollingTimer);
-      pollingTimer = null;
-    }
+    stopPolling();
     const activeRequest = get().activeRequest;
     try {
       if (activeRequest?.id) {

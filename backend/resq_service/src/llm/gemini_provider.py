@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List, Dict, Optional
 import httpx
@@ -70,21 +71,25 @@ class GeminiProvider(LLMProvider):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code != 200:
+            # 503/429 responses are transient. Retry once, then use the
+            # secondary provider rather than making an emergency caller wait.
+            async with httpx.AsyncClient(timeout=7.0) as client:
+                for attempt in range(2):
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if not candidates:
+                            raise RuntimeError(f"Empty candidates returned by Gemini: {data}")
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        text_response = "".join([p.get("text", "") for p in parts if "text" in p]).strip()
+                        if not text_response:
+                            raise RuntimeError("Gemini returned empty text response")
+                        return text_response
+                    if resp.status_code in (429, 503) and attempt == 0:
+                        await asyncio.sleep(0.6)
+                        continue
                     raise RuntimeError(f"Gemini API returned {resp.status_code}: {resp.text}")
-
-                data = resp.json()
-                candidates = data.get("candidates", [])
-                if not candidates:
-                    raise RuntimeError(f"Empty candidates returned by Gemini: {data}")
-
-                parts = candidates[0].get("content", {}).get("parts", [])
-                text_response = "".join([p.get("text", "") for p in parts if "text" in p]).strip()
-                if not text_response:
-                    raise RuntimeError("Gemini returned empty text response")
-                return text_response
         except Exception as e:
             logger.error(f"Gemini request failed: {e}")
             raise
