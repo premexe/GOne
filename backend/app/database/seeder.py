@@ -1,75 +1,18 @@
 import logging
 from sqlalchemy.orm import Session
-from app.models.users import User
-from app.models.emergency_wallet import EmergencyWallet
 from app.models.hospital import Hospital
-from app.security.password import hash_password
 
 logger = logging.getLogger(__name__)
 
 
 def seed_default_data(db: Session):
     """
-    Auto-seeds essential users, wallets, and hospitals if they do not exist.
-    Guarantees that deployment restarts / ephemeral containers always have
-    verified working accounts and hospital discovery records.
+    Auto-seeds only non-sensitive reference data required by a fresh instance.
+    User accounts are deliberately created through the registration flow, never
+    from hard-coded emails or predictable passwords.
     """
     try:
-        # 1. Seed Primary User: premkakade2005@gmail.com
-        user = db.query(User).filter(User.email == "premkakade2005@gmail.com").first()
-        if not user:
-            logger.info("Seeding default user: premkakade2005@gmail.com")
-            user = User(
-                full_name="Prem Kakade",
-                email="premkakade2005@gmail.com",
-                phone_number="9876543210",
-                password_hash=hash_password("Password123!"),
-                plain_password=None,
-                blood_group="O+",
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-
-            wallet = EmergencyWallet(
-                user_id=user.user_id,
-                blood_group="O+",
-                allergies="None reported",
-                current_medications="None recorded",
-                chronic_conditions="None recorded",
-                emergency_notes="Primary emergency wallet",
-            )
-            db.add(wallet)
-            db.commit()
-
-        # 2. Seed Demo User: demo@lifelink.ai
-        demo_user = db.query(User).filter(User.email == "demo@lifelink.ai").first()
-        if not demo_user:
-            logger.info("Seeding demo user: demo@lifelink.ai")
-            demo_user = User(
-                full_name="LifeLink Demo User",
-                email="demo@lifelink.ai",
-                phone_number="9998887770",
-                password_hash=hash_password("Password123!"),
-                plain_password=None,
-                blood_group="A+",
-            )
-            db.add(demo_user)
-            db.commit()
-            db.refresh(demo_user)
-
-            demo_wallet = EmergencyWallet(
-                user_id=demo_user.user_id,
-                blood_group="A+",
-                allergies="Penicillin",
-                current_medications="None",
-                chronic_conditions="Asthma",
-                emergency_notes="Carry rescue inhaler",
-            )
-            db.add(demo_wallet)
-            db.commit()
-
-        # 3. Seed Default Hospitals if empty
+        # Seed default hospitals if empty. User data is never auto-seeded.
         if db.query(Hospital).count() == 0:
             logger.info("Seeding default hospital network")
             hospitals = [

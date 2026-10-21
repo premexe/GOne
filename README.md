@@ -1,6 +1,6 @@
-﻿# GOne - LifeLink AI+
+# G-ONE
 
-GOne (branded **LifeLink AI+**) is a full-stack emergency health companion built for the Indian context. It combines a React Native / Expo mobile app, a FastAPI backend, and an AI-powered voice triage system (G-ONE ResQ) that guides patients and bystanders through pre-hospital survival protocols while automatically dispatching emergency responders.
+G-ONE is a full-stack emergency health companion built for the Indian context. It combines a React Native / Expo mobile app, a FastAPI backend, an independent hospital dashboard, and the G-ONE ResQ voice-triage service.
 
 ---
 
@@ -20,8 +20,8 @@ GOne/
 |   |   |-- learn/               First-aid education module
 |   |   `-- notifications/       In-app notification feed
 |   |-- src/
-|   |   |-- components/          SOSButton, GOneResQCallModal, WalletCard, TimelineStepper ...
-|   |   |-- services/            API client, AI triage engine, speech, Agora RTC
+|   |   |-- components/          SOSButton, WalletCard, TimelineStepper ...
+|   |   |-- services/            API client, speech recognition, text-to-speech, location
 |   |   |-- store/               Zustand global stores (auth, emergency, hospital, ...)
 |   |   |-- constants/           Theme colours, spacing, typography
 |   |   `-- types/               Shared TypeScript interfaces
@@ -76,10 +76,10 @@ GOne/
 
 ```
 +-------------------------------------------------------+
-|              LifeLink AI+ Mobile App                  |
+|                    G-ONE Mobile App                   |
 |                (Expo SDK 57 / React Native 0.86)      |
 |                                                       |
-|  Patient Screens   |  G-ONE ResQ Voice Modal          |
+|  Patient Screens   |  G-ONE ResQ Voice Screen         |
 |  - SOS 1-tap       |  - Hands-free STT/TTS dialogue   |
 |  - Live tracking   |  - EN / HI / MR auto-detect      |
 |  - Wallet QR       |  - Pre-hospital survival guide   |
@@ -99,9 +99,8 @@ GOne/
 |  JWT / BCrypt | Distance Rank  | 9 Protocol Types     |
 |               | Milestone State| Gemini + Fallback    |
 |                                                       |
-|  Agora RTC Token Generator                            |
-|  Resend SMTP Email (emergency contact alerts)         |
-|  Bland AI phone call bridge (optional/legacy)         |
+|  ResQ WebSocket voice session                          |
+|  Resend email handover (when configured)              |
 +------+----------------------------+------------------+
        |                            |
        v                            v
@@ -119,7 +118,7 @@ PostgreSQL (Supabase)         SQLite auto-fallback
 |---|---|
 | **1-Tap SOS** | GPS acquisition + nearest hospital matching in one tap |
 | **G-ONE ResQ Voice Call** | Hands-free AI voice triage in English, Hindi, Marathi |
-| **Offline Emergency Wallet** | Blood group, allergies, medications — readable without internet |
+| **Emergency Wallet** | Cached patient card with blood group, allergies, medications, and contacts |
 | **Dynamic QR Code** | First-responder scannable medical identity (react-native-qrcode-svg) |
 | **Live Tracking** | 5-stage dispatch milestone tracker with real-time GPS |
 | **Medical Records** | Upload prescriptions / scans; OCR + AI clinical summary |
@@ -179,6 +178,13 @@ Download from: https://expo.dev/accounts/premexe/projects/lifelink-ai-plus/build
 
 ---
 
+## Authentication and Database
+
+G-ONE currently uses its FastAPI user service for registration, password
+verification, and JWT sessions. Supabase provides the hosted PostgreSQL
+database through `DATABASE_URL`; Supabase Auth is not part of the active login
+flow. Do not create or document shared production credentials.
+
 ## Environment Configuration
 
 Copy `backend/.env.example` to `backend/.env` and fill in your values.
@@ -198,13 +204,12 @@ EAS preview build: automatically injects `https://lifelink-backend-1tzq.onrender
 
 ---
 
-## Demo Credentials
+## Access and Accounts
 
-| Role | Email | Password |
-|---|---|---|
-| Patient (primary) | premkakade2005@gmail.com | Password123! |
-| Patient (demo) | demo@lifelink.ai | Demo123! |
-| Hospital admin | See REPORT_ADMIN_DASHBOARD.md section 21 | |
+Create patient accounts through the in-app registration flow. Production
+documentation never contains personal emails, passwords, or shared demo
+accounts. Hospital-dashboard access must be provisioned separately for each
+authorized hospital user.
 
 ---
 
@@ -217,7 +222,6 @@ EAS preview build: automatically injects `https://lifelink-backend-1tzq.onrender
 | Language | TypeScript (strict) |
 | Routing | Expo Router (file-based) |
 | State | Zustand |
-| In-App Calling | react-native-agora 4.6.4 (Agora RTC) |
 | Speech STT | expo-speech-recognition |
 | Speech TTS | expo-speech |
 | QR Code | react-native-qrcode-svg |

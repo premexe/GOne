@@ -49,7 +49,7 @@
 22. [Hospital Admin Dashboard](#22-hospital-admin-dashboard)
 23. [Environment Variables](#23-environment-variables)
 24. [EAS Build & Deployment](#24-eas-build--deployment)
-25. [Demo Credentials](#25-demo-credentials)
+25. [Access Management](#25-access-management)
 26. [Implementation Plan Summary](#26-implementation-plan-summary)
 27. [Project Status](#27-project-status)
 
@@ -258,16 +258,9 @@ Safe to run on PostgreSQL and SQLite (failures are logged as warnings, not crash
 
 **File:** `backend/app/database/seeder.py`
 
-Runs on startup via `seed_default_data(db)`. Seeds:
-
-**Users:**
-| Name | Email | Password | Blood Group |
-|---|---|---|---|
-| Prem Kakade | premkakade2005@gmail.com | Password123! | O+ |
-| LifeLink Demo User | demo@lifelink.ai | Password123! | A+ |
-
-- Both users get an `EmergencyWallet` auto-created.
-- Demo user wallet: Penicillin allergy, Asthma condition, carry rescue inhaler note.
+Runs on startup via `seed_default_data(db)`. It seeds only non-sensitive
+hospital reference data. Patient accounts and emergency wallets are created by
+authorized users through the application registration and profile flows.
 
 **Hospitals (if table empty):**
 | Name | Location | Beds | ICU | Oxygen |
@@ -1359,14 +1352,12 @@ npx eas-cli build --platform android --profile preview
 
 ---
 
-## 25. Demo Credentials
+## 25. Access Management
 
 ### Patient App
 
-| Name | Email | Password |
-|---|---|---|
-| Prem Kakade | premkakade2005@gmail.com | Password123! |
-| LifeLink Demo User | demo@lifelink.ai | Password123! |
+Patient accounts are created through the in-app registration flow. No personal
+email addresses, passwords, or shared production demo accounts are published.
 
 ### Hospital Admin Dashboard
 

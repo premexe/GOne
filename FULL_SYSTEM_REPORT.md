@@ -1,4 +1,4 @@
-﻿# GOne / LifeLink AI+ - Full System Report
+# GOne / LifeLink AI+ - Full System Report
 
 > **Document Type:** Technical System Report
 > **Generated:** October 2026
@@ -126,7 +126,7 @@ LifeLink AI+ (code-name GOne) is a production-targeted emergency health companio
 |         DATABASE PERSISTENCE               |  |           EXTERNAL SERVICES              |
 | - Primary: PostgreSQL (Supabase Pooler)    |  | - Resend SMTP Email                      |
 | - Fallback: SQLite (lifelink_ai.db)        |  | - Bland AI Phone Calls (legacy/optional) |
-| - Auto-seeder: premkakade2005 + demo       |  | - EAS Cloud APK Builder                  |
+| - Reference hospital seeder only           |  | - EAS Cloud APK Builder                  |
 +--------------------------------------------+  +-----------------------------------------+
 ```
 
@@ -378,11 +378,10 @@ In backend/app/database/connection.py, the backend:
 
 ### Auto-Seeder
 
-On every startup, backend/app/database/seeder.py ensures:
-- Primary user: premkakade2005@gmail.com / Password123!
-- Demo user: demo@lifelink.ai / Demo123!
-- Hospital admin credentials
-- Default hospital network records
+On every startup, `backend/app/database/seeder.py` ensures only the default
+hospital-network reference records. Patient and hospital accounts are created
+through their authorized registration/provisioning flows; no shared or
+predictable credentials are seeded.
 
 ---
 
@@ -650,7 +649,7 @@ EAS CLI version requirement: >= 24.7.0
 2. **Continuous Hands-Free Dialogue:** No repeated button taps required; auto-listens when AI finishes speaking, auto-submits on speech completion.
 3. **Three-Language Support with Auto-Detect:** Seamless voice and text interaction across Marathi, Hindi, and English.
 4. **Groq Secondary AI Provider:** When Gemini is unavailable or quota-limited, the system falls back to Groq (llama-3.3-70b-versatile) before the deterministic engine.
-5. **Auto-Seeder on Every Startup:** Verified demo accounts and hospital network are guaranteed on every cold start or container restart.
+5. **Auto-Seeder on Every Startup:** Default hospital-network reference records are guaranteed on every cold start or container restart. User and hospital admin accounts are provisioned through their respective registration flows — no shared or predictable credentials are seeded.
 6. **"While Ambulance is En Route" Guide:** Dedicated high-priority pre-hospital interactive checklist.
 7. **Real-Time Synchronized Chat Feed:** Simultaneous speech-to-text transcript bubbles, sound-wave animations, and audio speech synthesis.
 8. **EAS APK Build Pipeline:** Full EAS configuration with preview APK profile pointing to the production Render backend URL.

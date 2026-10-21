@@ -1,4 +1,4 @@
-﻿# GOne - LifeLink AI+ Hospital Admin Dashboard Report
+# GOne - LifeLink AI+ Hospital Admin Dashboard Report
 
 > **Document Type:** Technical and Feature Report
 > **Generated:** October 2026
@@ -31,7 +31,7 @@
 18. [Environment Configuration](#18-environment-configuration)
 19. [Backend Dependencies](#19-backend-dependencies)
 20. [Security Model](#20-security-model)
-21. [Demo Hospital Credentials](#21-demo-hospital-credentials)
+21. [Hospital Account Provisioning](#21-hospital-account-provisioning)
 
 ---
 
@@ -484,18 +484,29 @@ Frontend EAS preview build: EXPO_PUBLIC_API_URL automatically set to https://lif
 
 ---
 
-## 21. Demo Hospital Credentials
+## 21. Hospital Account Provisioning
 
-The seeder (backend/app/database/seeder.py) creates default hospital accounts on every startup:
+Hospital admin accounts are **not auto-seeded** and must be provisioned through the proper setup flow. No shared or predictable credentials are distributed in this documentation.
 
-| Hospital | Email | Password |
-|---|---|---|
-| Default Hospital | hospital@lifelink.ai | Hospital123! |
+### Provisioning a Hospital Admin Account
 
-Additional hospitals can be seeded via backend/seed_palghar_hospitals.py:
+Use the authenticated admin API to create a hospital record, then issue credentials directly to the responsible hospital staff member:
+
+```powershell
+# Example: create a hospital record via the backend API
+curl -X POST https://<backend-url>/hospitals/ \
+  -H "Content-Type: application/json" \
+  -d '{"name": "<Hospital Name>", "address": "...", "email": "<staff-email>", "password": "<strong-password>", ...}'
+```
+
+> **Security policy:** Hospital credentials must be strong, unique per institution, rotated on staff changes, and never stored in documentation or version control.
+
+### Seeding Palghar Hospital Network (Reference Data Only)
+
+To load real Palghar district hospital geography (names, coordinates) as reference data — **without creating any login accounts** — run:
 
 ```powershell
 .venv\Scripts\python.exe backend/seed_palghar_hospitals.py
 ```
 
-This seeds real Palghar district hospital data with coordinates for realistic distance-ranking demo.
+This inserts hospital records with realistic coordinates for distance-ranking. Credentials must still be provisioned separately per hospital.
