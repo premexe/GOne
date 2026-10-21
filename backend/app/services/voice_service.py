@@ -452,12 +452,16 @@ YOUR CRITICAL RESPONSIBILITIES:
 
         logger.info("Saved call results for SOS %s (status=%s, transcript_len=%s)", sos_id, status, len(transcript_text or ""))
 
-        # Dispatch email notifications to patient and emergency contacts
+        # Dispatch email notifications to patient and emergency contacts.
+        # Return the result so callers do not report delivery when SMTP fails.
+        email_result = {"sent": 0, "errors": 1, "error": "Email dispatch did not run."}
         try:
             from app.services.email_service import EmailService
-            EmailService.send_sos_transcript_emails(db, sos_id)
+            email_result = EmailService.send_sos_transcript_emails(db, sos_id)
         except Exception as ex:
             logger.warning("Email dispatch after call completion failed: %s", ex)
+            email_result = {"sent": 0, "errors": 1, "error": str(ex)}
+        return email_result
 
     @staticmethod
     def get_initial_twiml(db: Session, sos_id: int) -> str:

@@ -22,7 +22,10 @@ import smtplib
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 from typing import Optional
+
+from dotenv import load_dotenv
 
 from sqlalchemy.orm import Session
 
@@ -32,6 +35,10 @@ from app.models.emergency_contact import EmergencyContact
 from app.models.emergency_wallet import EmergencyWallet
 
 logger = logging.getLogger(__name__)
+
+# Load the backend .env in local development. Render-provided variables remain
+# authoritative because load_dotenv does not overwrite existing values.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 # ── Env ──────────────────────────────────────────────────────────────────────
 SMTP_HOST = os.getenv("SMTP_HOST", "")
@@ -190,7 +197,7 @@ def _send_smtp(to_email: str, subject: str, html_body: str) -> bool:
             to_email,
             subject,
         )
-        return True
+        return False
 
     try:
         msg = MIMEMultipart("alternative")
@@ -231,6 +238,14 @@ class EmailService:
         if not user:
             logger.warning("EmailService: User not found for SOS %s.", sos_id)
             return {"sent": 0, "errors": 1}
+
+        if not _SMTP_READY:
+            logger.error("EmailService: SMTP is not configured; refusing to mark SOS %s as emailed.", sos_id)
+            return {
+                "sent": 0,
+                "errors": 1,
+                "configuration_error": "SMTP is not configured on this deployment.",
+            }
 
         wallet: Optional[EmergencyWallet] = (
             db.query(EmergencyWallet)

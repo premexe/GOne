@@ -28,7 +28,7 @@ def _save_native_resq_handover(session) -> tuple[bool, str]:
         )
         db = SessionLocal()
         try:
-            VoiceService.save_call_results(
+            email_result = VoiceService.save_call_results(
                 db=db,
                 sos_id=session.sos_id,
                 call_sid=f"resq-{session.session_id}",
@@ -38,7 +38,10 @@ def _save_native_resq_handover(session) -> tuple[bool, str]:
             )
         finally:
             db.close()
-        return True, "Transcript handover saved and email delivery started."
+        if email_result and email_result.get("sent", 0) > 0:
+            return True, "Transcript handover saved and email was accepted for delivery."
+        detail = (email_result or {}).get("configuration_error") or (email_result or {}).get("error")
+        return False, detail or "Transcript was saved, but no email recipient accepted delivery."
     except Exception as exc:
         logger.exception("ResQ handover persistence failed")
         return False, f"Unable to complete handover: {exc}"
