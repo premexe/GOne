@@ -57,10 +57,7 @@
       "expo-status-bar"
     ],
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "5ae13db1-64be-453a-b830-403ccc0910d8"
-      }
+      "router": {}
     }
   }
 }
