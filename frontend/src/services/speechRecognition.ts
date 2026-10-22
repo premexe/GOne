@@ -74,22 +74,37 @@ export async function startSpeechRecognition(options: {
   if (Platform.OS === 'web' && BrowserRecognition) {
     const recognition = new BrowserRecognition();
     let active = true;
+    let latestTranscript = '';
+    let delivered = false;
+
+    const deliver = (text: string) => {
+      const clean = text.trim();
+      if (clean && !delivered) {
+        delivered = true;
+        options.onTranscript(clean);
+      }
+    };
 
     recognition.lang = options.language || 'en-US';
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.onresult = (event) => {
       const result = event.results[event.results.length - 1];
-      if (!result?.isFinal) return;
       const transcript = result[0]?.transcript?.trim();
-      if (transcript) options.onTranscript(transcript);
+      if (transcript) latestTranscript = transcript;
+      if (result?.isFinal && transcript) {
+        deliver(transcript);
+      }
     };
     recognition.onerror = (event) => {
-      if (active && event.error !== 'aborted') {
+      if (active && !['aborted', 'no-speech'].includes(event.error || '')) {
         options.onError(event.message || `Browser speech recognition failed${event.error ? `: ${event.error}` : '.'}`);
       }
     };
     recognition.onend = () => {
+      if (active && latestTranscript && !delivered) {
+        deliver(latestTranscript);
+      }
       if (active) options.onEnd();
     };
 
@@ -101,10 +116,17 @@ export async function startSpeechRecognition(options: {
     }
 
     return {
-      stop: () => recognition.stop(),
+      stop: () => {
+        try {
+          recognition.stop();
+        } catch {}
+      },
       abort: () => {
         active = false;
-        recognition.abort();
+        latestTranscript = '';
+        try {
+          recognition.abort();
+        } catch {}
       },
     };
   }
@@ -135,21 +157,44 @@ export async function startSpeechRecognition(options: {
     return null;
   }
 
+  let latestTranscript = '';
+  let delivered = false;
+
+  const deliver = (text: string) => {
+    const clean = text.trim();
+    if (clean && !delivered) {
+      delivered = true;
+      options.onTranscript(clean);
+    }
+  };
+
   const subscriptions = [
     speechRecognition.addListener('result', (event) => {
-      // Android emits changing interim hypotheses. Persist only a final answer
-      // so the SOS transcript never contains the same sentence repeatedly.
-      if (event.isFinal === false) return;
-      // Keep the first final alternative. This is the Android event shape
-      // used by the last known working G-ONE build.
-      const transcript = event.results[0]?.transcript?.trim();
-      if (transcript) options.onTranscript(transcript);
+      const transcript =
+        event.results?.[0]?.transcript?.trim() ||
+        event.results
+          ?.map((r: { transcript?: string }) => r.transcript?.trim())
+          .find(Boolean) ||
+        '';
+
+      if (transcript) {
+        latestTranscript = transcript;
+      }
+
+      if (event.isFinal && transcript) {
+        deliver(transcript);
+      }
     }),
     speechRecognition.addListener('error', (event) => {
-      if (event.error !== 'aborted') options.onError(event.message || 'Speech recognition could not transcribe this recording.');
+      if (!['aborted', 'no-speech', 'speech-timeout'].includes(event.error)) {
+        options.onError(event.message || 'Speech recognition could not transcribe this recording.');
+      }
     }),
     speechRecognition.addListener('end', () => {
       subscriptions.forEach((subscription) => subscription.remove());
+      if (latestTranscript && !delivered) {
+        deliver(latestTranscript);
+      }
       options.onEnd();
     }),
   ];
@@ -161,15 +206,9 @@ export async function startSpeechRecognition(options: {
       lang: locale,
       continuous: false,
       interimResults: true,
-      // Use the phone's normal recognition service. Requiring a downloaded
-      // offline model prevented the first voice interview on many devices.
       requiresOnDeviceRecognition: false,
       addsPunctuation: false,
       contextualStrings: ['chest pain', 'breathing difficulty', 'bleeding', 'accident', 'unconscious'],
-      androidIntentOptions: {
-        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 10000,
-        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 5000,
-      },
     });
   } catch (error) {
     subscriptions.forEach((subscription) => subscription.remove());
@@ -177,5 +216,17 @@ export async function startSpeechRecognition(options: {
     return null;
   }
 
-  return { stop: () => speechRecognition.stop(), abort: () => speechRecognition.abort() };
+  return {
+    stop: () => {
+      try {
+        speechRecognition.stop();
+      } catch {}
+    },
+    abort: () => {
+      try {
+        latestTranscript = '';
+        speechRecognition.abort();
+      } catch {}
+    },
+  };
 }

@@ -32,7 +32,14 @@ export default function ResqVoiceScreen() {
   const thinkingRef = useRef(false);
 
   const addMessage = (sender: Message['sender'], text: string) => setMessages((old) => [...old, { id: `${Date.now()}-${Math.random()}`, sender, text }]);
-  const stopListening = () => { listeningRef.current = false; setListening(false); recognitionRef.current?.abort(); recognitionRef.current = null; };
+  const stopListening = () => {
+    listeningRef.current = false;
+    setListening(false);
+    try {
+      recognitionRef.current?.stop();
+    } catch {}
+    recognitionRef.current = null;
+  };
   const sendTurn = async (raw: string) => {
     const text = raw.trim();
     if (!text || thinkingRef.current || completing) return;
@@ -117,7 +124,7 @@ export default function ResqVoiceScreen() {
     <View style={styles.header}><Pressable onPress={() => router.back()}><Text style={styles.back}>Back to SOS</Text></Pressable><Text style={styles.headerTitle}>G-ONE ResQ Voice Agent</Text><View style={[styles.dot, connected ? styles.online : styles.offline]} /></View>
     <View style={styles.statusCard}><Text style={styles.status}>{status}</Text><View style={styles.metrics}><Text style={styles.metric}>{classification}</Text><Text style={[styles.metric, severity === 'CRITICAL' && styles.critical]}>{severity}</Text><Text style={styles.metric}>{language}</Text></View>{provider ? <Text style={styles.provider}>AI engine: {provider}</Text> : null}</View>
     <FlatList data={messages} keyExtractor={(item) => item.id} contentContainerStyle={styles.feed} renderItem={({ item }) => <View style={[styles.message, item.sender === 'user' ? styles.userMessage : styles.agentMessage]}><Text style={styles.sender}>{item.sender === 'user' ? 'YOU' : 'G-ONE RESQ'}</Text><Text style={styles.messageText}>{item.text}</Text></View>} ListEmptyComponent={<Text style={styles.empty}>Start speaking or type your emergency. End the voice session to email its full transcript to the patient and emergency contacts.</Text>} />
-    <View style={styles.controls}><View style={styles.inputRow}><TextInput value={input} onChangeText={setInput} placeholder="Type in any language..." placeholderTextColor="#94A3B8" style={styles.input} multiline /><Pressable disabled={thinking || completing || !input.trim()} onPress={() => sendTurn(input)} style={[styles.send, (thinking || completing || !input.trim()) && styles.disabled]}><Send size={20} color="#FFF" /></Pressable></View><Pressable disabled={thinking || completing} onPress={listening ? stopListening : startListening} style={[styles.mic, (listening || thinking) && styles.micActive]}>{thinking ? <ActivityIndicator color="#FFF" /> : listening ? <MicOff size={24} color="#FFF" /> : <Mic size={24} color="#FFF" />}<Text style={styles.buttonText}>{thinking ? 'Thinking...' : listening ? 'Stop listening' : 'Tap to speak'}</Text></Pressable><Pressable disabled={!connected || completing} onPress={completeSession} style={[styles.end, (!connected || completing) && styles.disabled]}><PhoneOff size={19} color="#FFF" /><Text style={styles.buttonText}>{completing ? 'Sending transcript...' : 'End and email handover'}</Text></Pressable><View style={styles.footer}><Volume2 size={15} color="#94A3B8" /><Text style={styles.footerText}>Replies are spoken aloud. For immediate danger, contact local emergency services.</Text></View></View>
+    <View style={styles.controls}><View style={styles.inputRow}><TextInput value={input} onChangeText={setInput} placeholder="Type in any language..." placeholderTextColor="#94A3B8" style={styles.input} multiline /><Pressable disabled={thinking || completing || !input.trim()} onPress={() => sendTurn(input)} style={[styles.send, (thinking || completing || !input.trim()) && styles.disabled]}><Send size={20} color="#FFF" /></Pressable></View><Pressable disabled={thinking || completing} onPress={listening ? stopListening : startListening} style={[styles.mic, (listening || thinking) && styles.micActive]}>{thinking ? <ActivityIndicator color="#FFF" /> : listening ? <MicOff size={24} color="#FFF" /> : <Mic size={24} color="#FFF" />}<Text style={styles.buttonText}>{thinking ? 'Thinking...' : listening ? 'Tap to finish speaking' : 'Tap to speak'}</Text></Pressable><Pressable disabled={!connected || completing} onPress={completeSession} style={[styles.end, (!connected || completing) && styles.disabled]}><PhoneOff size={19} color="#FFF" /><Text style={styles.buttonText}>{completing ? 'Sending transcript...' : 'End and email handover'}</Text></Pressable><View style={styles.footer}><Volume2 size={15} color="#94A3B8" /><Text style={styles.footerText}>Replies are spoken aloud. For immediate danger, contact local emergency services.</Text></View></View>
   </View>;
 }
 
