@@ -65,9 +65,17 @@ export default function ProvideInfoScreen() {
     }
 
     setVoiceError(null);
+    const existingNotes = typeof notes === 'string' && notes.trim() ? `${notes.trim()} ` : '';
     const recognition = await startSpeechRecognition({
+      onInterimTranscript: (interim) => {
+        if (interim) {
+          setNotes(`${existingNotes}${interim}`);
+        }
+      },
       onTranscript: (transcript) => {
-        setNotes((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        if (transcript) {
+          setNotes(`${existingNotes}${transcript}`.trim());
+        }
       },
       onEnd: () => {
         recognitionRef.current = null;

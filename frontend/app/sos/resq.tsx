@@ -40,10 +40,17 @@ export default function ResqVoiceScreen() {
     } catch {}
     recognitionRef.current = null;
   };
+
   const sendTurn = async (raw: string) => {
     const text = raw.trim();
     if (!text || thinkingRef.current || completing) return;
-    stopListening(); setInput(''); addMessage('user', text); setThinking(true); thinkingRef.current = true; setStatus('ResQ is analyzing your emergency...');
+    stopListening();
+    setInput('');
+    addMessage('user', text);
+    setThinking(true);
+    thinkingRef.current = true;
+    setStatus('ResQ is analyzing your emergency...');
+
     if (connectedRef.current && socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'USER_SPEECH', text }));
       return;
@@ -73,62 +80,105 @@ export default function ResqVoiceScreen() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Cannot reach ResQ. Check the Render service and try again.');
     } finally {
-      setThinking(false); thinkingRef.current = false;
+      setThinking(false);
+      thinkingRef.current = false;
     }
   };
+
   const startListening = async () => {
     if (listeningRef.current || thinkingRef.current || completing) return;
-    setStatus('Listening... speak naturally in your language.'); listeningRef.current = true; setListening(true);
+
+    try {
+      const wasSpeaking = await Speech.isSpeakingAsync().catch(() => false);
+      if (wasSpeaking) {
+        Speech.stop();
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    } catch {}
+
+    setStatus('Listening... speak now. Tap to finish.');
+    listeningRef.current = true;
+    setListening(true);
+    setInput('');
+
     const handle = await startSpeechRecognition({
-      onTranscript: sendTurn,
-      onEnd: () => { listeningRef.current = false; setListening(false); },
-      onError: (message) => { listeningRef.current = false; setListening(false); setStatus(message); },
+      onInterimTranscript: (interim) => {
+        if (interim) {
+          setInput(interim);
+        }
+      },
+      onTranscript: (transcript) => {
+        if (transcript.trim()) {
+          setInput(transcript);
+          void sendTurn(transcript);
+        }
+      },
+      onEnd: () => {
+        listeningRef.current = false;
+        setListening(false);
+      },
+      onError: (message) => {
+        listeningRef.current = false;
+        setListening(false);
+        setStatus(message);
+      },
     });
+
     recognitionRef.current = handle;
-    if (!handle) { listeningRef.current = false; setListening(false); }
+    if (!handle) {
+      listeningRef.current = false;
+      setListening(false);
+    }
+  };
+
+  const handleMicPress = () => {
+    if (thinking || completing) return;
+    if (listening) {
+      const pendingText = input.trim();
+      stopListening();
+      if (pendingText) {
+        void sendTurn(pendingText);
+      }
+    } else {
+      void startListening();
+    }
   };
 
   const speakGuidance = async (text: string, langHint?: string) => {
     if (!text?.trim()) return;
+
+    // Clean markdown asterisks and URLs so speech engine speaks cleanly and naturally
+    const spokenText = text.replace(/[*#_~`>]/g, '').replace(/https?:\/\/\S+/g, '').trim();
+    if (!spokenText) return;
 
     // Stop any current TTS and wait for audio focus to release on Android
     try {
       const wasSpeaking = await Speech.isSpeakingAsync().catch(() => false);
       if (wasSpeaking) {
         Speech.stop();
-        await new Promise((r) => setTimeout(r, 250));
+        await new Promise((r) => setTimeout(r, 200));
       }
     } catch {}
 
-    // Android needs extra time after mic capture ends before TTS can acquire audio focus
-    await new Promise((r) => setTimeout(r, 450));
+    // Android needs a moment after mic capture ends before TTS can acquire speaker focus
+    await new Promise((r) => setTimeout(r, 400));
     if (completing) return;
 
     let finished = false;
-    const onFinished = async () => {
+    const onFinished = () => {
       if (finished) return;
       finished = true;
-      if (completing || !connectedRef.current) return;
-
-      // Wait for TTS engine to fully release the audio output device before mic opens
-      await new Promise((r) => setTimeout(r, 350));
-
-      // Double-check nothing else started speaking in the gap
-      const stillSpeaking = await Speech.isSpeakingAsync().catch(() => false);
-      if (!stillSpeaking && !completing && connectedRef.current) {
-        void startListening();
-      }
+      setStatus('ResQ guidance finished. Tap microphone to speak again.');
+      // NO auto-start! System waits for user's explicit tap.
     };
 
-    const isDevanagari = /[\u0900-\u097F]/.test(text);
-    // Use hi-IN for Devanagari script; fall back to system default for everything else
-    // (forcing en-IN fails silently on devices without that voice pack installed)
+    const isDevanagari = /[\u0900-\u097F]/.test(spokenText);
     const targetLang = isDevanagari ? 'hi-IN' : (langHint === 'hi' ? 'hi-IN' : undefined);
 
     const trySpeak = (lang?: string) => {
       return new Promise<void>((resolve) => {
         try {
-          Speech.speak(text, {
+          Speech.speak(spokenText, {
             language: lang,
             pitch: 1.0,
             rate: 0.9,
@@ -138,9 +188,8 @@ export default function ResqVoiceScreen() {
               console.warn('expo-speech error:', e);
               resolve();
               if (lang !== undefined) {
-                // Retry with system default voice
                 try {
-                  Speech.speak(text, {
+                  Speech.speak(spokenText, {
                     rate: 0.9,
                     onDone: () => onFinished(),
                     onStopped: () => onFinished(),
@@ -165,47 +214,72 @@ export default function ResqVoiceScreen() {
 
   const completeSession = () => {
     if (!connectedRef.current || socketRef.current?.readyState !== WebSocket.OPEN || completing) return;
-    stopListening(); setCompleting(true); setStatus('Saving transcript and sending emergency emails...'); socketRef.current.send(JSON.stringify({ type: 'END_SESSION' }));
+    stopListening();
+    setCompleting(true);
+    setStatus('Saving transcript and sending emergency emails...');
+    socketRef.current.send(JSON.stringify({ type: 'END_SESSION' }));
   };
 
   useEffect(() => {
-    const socket = new WebSocket(socketUrl(API_URL)); socketRef.current = socket;
+    const socket = new WebSocket(socketUrl(API_URL));
+    socketRef.current = socket;
     socket.onopen = () => {
-      connectedRef.current = true; setConnected(true); setStatus('Connected. Tell ResQ what happened.');
-      socket.send(JSON.stringify({ type: 'INIT', patient_id: user?.id ? `USER-${user.id}` : 'ANONYMOUS_EMERGENCY', sos_id: sosId ? Number(sosId) : undefined, token: getToken() || '' }));
-      setTimeout(() => {
-        if (!completing && connectedRef.current) {
-          startListening();
-        }
-      }, 700);
+      connectedRef.current = true;
+      setConnected(true);
+      setStatus('Connected. Tap the microphone when you want to speak.');
+      socket.send(JSON.stringify({
+        type: 'INIT',
+        patient_id: user?.id ? `USER-${user.id}` : 'ANONYMOUS_EMERGENCY',
+        sos_id: sosId ? Number(sosId) : undefined,
+        token: getToken() || '',
+      }));
+      // NO auto-start! User starts when ready.
     };
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'SESSION_INITIALIZED') return;
         if (data.type === 'ASSISTANT_RESPONSE') {
-          setThinking(false); thinkingRef.current = false;
+          setThinking(false);
+          thinkingRef.current = false;
           setClassification(String(data.emergency_type || 'general emergency').replace(/_/g, ' ').toUpperCase());
-          setSeverity(String(data.severity || 'moderate').toUpperCase()); setLanguage(String(data.language || 'auto').toUpperCase()); setProvider(String(data.provider_used || 'Safety protocol'));
+          setSeverity(String(data.severity || 'moderate').toUpperCase());
+          setLanguage(String(data.language || 'auto').toUpperCase());
+          setProvider(String(data.provider_used || 'Safety protocol'));
           setStatus(data.handover_status === 'DISPATCHED' ? 'Emergency handover dispatched.' : 'ResQ guidance ready.');
           addMessage('assistant', data.text);
           void speakGuidance(data.text, data.language);
         } else if (data.type === 'SESSION_COMPLETED') {
-          setCompleting(false); setStatus(data.message || (data.success ? 'Transcript emailed.' : 'Unable to email transcript.'));
+          setCompleting(false);
+          setStatus(data.message || (data.success ? 'Transcript emailed.' : 'Unable to email transcript.'));
           if (data.success) setTimeout(() => router.back(), 1300);
-        } else if (data.type === 'ERROR') { setThinking(false); thinkingRef.current = false; setCompleting(false); setStatus(data.message || 'ResQ could not process this turn.'); }
-      } catch { setStatus('Received an invalid response from ResQ.'); }
+        } else if (data.type === 'ERROR') {
+          setThinking(false);
+          thinkingRef.current = false;
+          setCompleting(false);
+          setStatus(data.message || 'ResQ could not process this turn.');
+        }
+      } catch {
+        setStatus('Received an invalid response from ResQ.');
+      }
     };
     socket.onerror = () => setStatus('Cannot connect to ResQ. Confirm the backend is deployed and try again.');
-    socket.onclose = () => { connectedRef.current = false; setConnected(false); };
-    return () => { stopListening(); Speech.stop(); socket.close(); };
+    socket.onclose = () => {
+      connectedRef.current = false;
+      setConnected(false);
+    };
+    return () => {
+      stopListening();
+      Speech.stop();
+      socket.close();
+    };
   }, []);
 
   return <View style={styles.container}>
     <View style={styles.header}><Pressable onPress={() => router.back()}><Text style={styles.back}>Back to SOS</Text></Pressable><Text style={styles.headerTitle}>G-ONE ResQ Voice Agent</Text><View style={[styles.dot, connected ? styles.online : styles.offline]} /></View>
     <View style={styles.statusCard}><Text style={styles.status}>{status}</Text><View style={styles.metrics}><Text style={styles.metric}>{classification}</Text><Text style={[styles.metric, severity === 'CRITICAL' && styles.critical]}>{severity}</Text><Text style={styles.metric}>{language}</Text></View>{provider ? <Text style={styles.provider}>AI engine: {provider}</Text> : null}</View>
-    <FlatList data={messages} keyExtractor={(item) => item.id} contentContainerStyle={styles.feed} renderItem={({ item }) => <Pressable onPress={() => item.sender === 'assistant' && speakGuidance(item.text)} style={[styles.message, item.sender === 'user' ? styles.userMessage : styles.agentMessage]}><Text style={styles.sender}>{item.sender === 'user' ? 'YOU' : 'G-ONE RESQ 🔊'}</Text><Text style={styles.messageText}>{item.text}</Text></Pressable>} ListEmptyComponent={<Text style={styles.empty}>Start speaking or type your emergency. End the voice session to email its full transcript to the patient and emergency contacts.</Text>} />
-    <View style={styles.controls}><View style={styles.inputRow}><TextInput value={input} onChangeText={setInput} placeholder="Type in any language..." placeholderTextColor="#94A3B8" style={styles.input} multiline /><Pressable disabled={thinking || completing || !input.trim()} onPress={() => sendTurn(input)} style={[styles.send, (thinking || completing || !input.trim()) && styles.disabled]}><Send size={20} color="#FFF" /></Pressable></View><Pressable disabled={thinking || completing} onPress={listening ? stopListening : startListening} style={[styles.mic, (listening || thinking) && styles.micActive]}>{thinking ? <ActivityIndicator color="#FFF" /> : listening ? <MicOff size={24} color="#FFF" /> : <Mic size={24} color="#FFF" />}<Text style={styles.buttonText}>{thinking ? 'Thinking...' : listening ? 'Tap to finish speaking' : 'Tap to speak'}</Text></Pressable><Pressable disabled={!connected || completing} onPress={completeSession} style={[styles.end, (!connected || completing) && styles.disabled]}><PhoneOff size={19} color="#FFF" /><Text style={styles.buttonText}>{completing ? 'Sending transcript...' : 'End and email handover'}</Text></Pressable><View style={styles.footer}><Volume2 size={15} color="#94A3B8" /><Text style={styles.footerText}>Replies are spoken aloud. For immediate danger, contact local emergency services.</Text></View></View>
+    <FlatList data={messages} keyExtractor={(item) => item.id} contentContainerStyle={styles.feed} renderItem={({ item }) => <Pressable onPress={() => item.sender === 'assistant' && speakGuidance(item.text)} style={[styles.message, item.sender === 'user' ? styles.userMessage : styles.agentMessage]}><Text style={styles.sender}>{item.sender === 'user' ? 'YOU' : 'G-ONE RESQ 🔊'}</Text><Text style={styles.messageText}>{item.text}</Text></Pressable>} ListEmptyComponent={<Text style={styles.empty}>Tap the microphone button to start speaking or type your emergency message. End the voice session to email its full transcript to the patient and emergency contacts.</Text>} />
+    <View style={styles.controls}><View style={styles.inputRow}><TextInput value={input} onChangeText={setInput} placeholder="Type or speak in any language..." placeholderTextColor="#94A3B8" style={styles.input} multiline /><Pressable disabled={thinking || completing || !input.trim()} onPress={() => sendTurn(input)} style={[styles.send, (thinking || completing || !input.trim()) && styles.disabled]}><Send size={20} color="#FFF" /></Pressable></View><Pressable disabled={thinking || completing} onPress={handleMicPress} style={[styles.mic, (listening || thinking) && styles.micActive]}>{thinking ? <ActivityIndicator color="#FFF" /> : listening ? <MicOff size={24} color="#FFF" /> : <Mic size={24} color="#FFF" />}<Text style={styles.buttonText}>{thinking ? 'ResQ is analyzing...' : listening ? 'Listening... Tap to finish & send' : 'Tap to speak'}</Text></Pressable><Pressable disabled={!connected || completing} onPress={completeSession} style={[styles.end, (!connected || completing) && styles.disabled]}><PhoneOff size={19} color="#FFF" /><Text style={styles.buttonText}>{completing ? 'Sending transcript...' : 'End and email handover'}</Text></Pressable><View style={styles.footer}><Volume2 size={15} color="#94A3B8" /><Text style={styles.footerText}>Replies are spoken aloud. For immediate danger, contact local emergency services.</Text></View></View>
   </View>;
 }
 

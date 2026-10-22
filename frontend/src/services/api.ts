@@ -642,9 +642,10 @@ export const api = {
       }
 
       if (activeToken) {
+        const safeNotes = typeof notes === 'string' ? notes.trim() : '';
         const description = [
           symptoms.length ? `Symptoms: ${symptoms.join(', ')}` : '',
-          notes?.trim() ? `Patient note: ${notes.trim()}` : '',
+          safeNotes ? `Patient note: ${safeNotes}` : '',
         ]
           .filter(Boolean)
           .join('\n');

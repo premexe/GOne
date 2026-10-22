@@ -11,7 +11,7 @@ interface EmergencyState {
 
   toggleSymptom: (symptom: string) => void;
   clearSymptoms: () => void;
-  setNotes: (text: string) => void;
+  setNotes: (textOrUpdater: string | ((prev: string) => string)) => void;
   triggerSOS: (symptomsList?: string[], userNotes?: string) => Promise<EmergencyRequest>;
   refreshActiveEmergency: () => Promise<void>;
   endEmergency: () => Promise<void>;
@@ -47,12 +47,19 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
   },
 
   clearSymptoms: () => set({ selectedSymptoms: [], notes: '' }),
-  setNotes: (notes) => set({ notes }),
+  setNotes: (notesOrUpdater) =>
+    set((state) => ({
+      notes:
+        typeof notesOrUpdater === 'function'
+          ? (notesOrUpdater as (prev: string) => string)(state.notes || '')
+          : String(notesOrUpdater ?? ''),
+    })),
 
   triggerSOS: async (symptomsList, userNotes) => {
     set({ isEmergencyActive: true, isLocating: true });
     const symptoms = symptomsList || get().selectedSymptoms;
-    const notesText = userNotes || get().notes;
+    const rawNotes = userNotes !== undefined ? userNotes : get().notes;
+    const notesText = typeof rawNotes === 'function' ? '' : (typeof rawNotes === 'string' ? rawNotes : String(rawNotes || ''));
 
     // Dispatch immediately. A fresh GPS scan can take many seconds and must
     // never delay notifying the hospital. Use a recent position when present.

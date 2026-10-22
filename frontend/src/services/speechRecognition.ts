@@ -67,6 +67,7 @@ function preferredLanguage(): string {
 export async function startSpeechRecognition(options: {
   language?: string;
   onTranscript: (transcript: string) => void;
+  onInterimTranscript?: (interim: string) => void;
   onEnd: () => void;
   onError: (message: string) => void;
 }): Promise<{ stop: () => void; abort: () => void } | null> {
@@ -91,7 +92,12 @@ export async function startSpeechRecognition(options: {
     recognition.onresult = (event) => {
       const result = event.results[event.results.length - 1];
       const transcript = result[0]?.transcript?.trim();
-      if (transcript) latestTranscript = transcript;
+      if (transcript) {
+        latestTranscript = transcript;
+        if (options.onInterimTranscript && !result?.isFinal) {
+          options.onInterimTranscript(transcript);
+        }
+      }
       if (result?.isFinal && transcript) {
         deliver(transcript);
       }
@@ -140,14 +146,14 @@ export async function startSpeechRecognition(options: {
   // This requests both microphone permission and the separate iOS speech
   // recognition permission. Requesting only RECORD_AUDIO left iOS unable to
   // start transcription.
-  let permission: { granted: boolean };
+  let permission: { granted: boolean; status?: string };
   try {
     permission = await speechRecognition.requestPermissionsAsync();
   } catch (error) {
     options.onError(error instanceof Error ? error.message : 'Microphone permission could not be requested.');
     return null;
   }
-  if (!permission.granted) {
+  if (!permission.granted && permission.status !== 'granted') {
     options.onError('Microphone permission is required to transcribe a voice note. Allow it in Settings and try again.');
     return null;
   }
@@ -179,6 +185,9 @@ export async function startSpeechRecognition(options: {
 
       if (transcript) {
         latestTranscript = transcript;
+        if (options.onInterimTranscript && !event.isFinal) {
+          options.onInterimTranscript(transcript);
+        }
       }
 
       if (event.isFinal && transcript) {
@@ -186,7 +195,8 @@ export async function startSpeechRecognition(options: {
       }
     }),
     speechRecognition.addListener('error', (event) => {
-      if (!['aborted', 'no-speech', 'speech-timeout'].includes(event.error)) {
+      const errStr = typeof event.error === 'string' ? event.error : (event.error?.error || '');
+      if (!['aborted', 'no-speech', 'speech-timeout'].includes(errStr)) {
         options.onError(event.message || 'Speech recognition could not transcribe this recording.');
       }
     }),
@@ -202,6 +212,10 @@ export async function startSpeechRecognition(options: {
   const locale = options.language || preferredLanguage();
 
   try {
+    try {
+      speechRecognition.abort();
+    } catch {}
+
     speechRecognition.start({
       lang: locale,
       continuous: false,
@@ -210,8 +224,8 @@ export async function startSpeechRecognition(options: {
       addsPunctuation: false,
       contextualStrings: ['chest pain', 'breathing difficulty', 'bleeding', 'accident', 'unconscious'],
       androidIntentOptions: {
-        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 1500,
-        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 1200,
+        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2000,
+        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 1500,
       },
     });
   } catch (error) {
