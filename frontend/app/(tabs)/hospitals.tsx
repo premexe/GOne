@@ -414,6 +414,8 @@ export default function HospitalsScreen() {
         )}
       </View>
     );
+  }
+
   /* ── list view ── */
   return (
     <View style={styles.container}>
