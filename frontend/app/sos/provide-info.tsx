@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Keyboard } from 'react-native';
 import { Siren, Mic, CheckCircle2, ArrowRight, X } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -12,6 +12,13 @@ export default function ProvideInfoScreen() {
   const [isSending, setIsSending] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+    };
+  }, []);
 
   const symptomChips = [
     'Chest Pain / Tightness',
@@ -29,6 +36,11 @@ export default function ProvideInfoScreen() {
   const handleStartEmergency = async () => {
     if (isSending) return;
     Keyboard.dismiss();
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      setIsRecording(false);
+    }
     setIsSending(true);
     try {
       await triggerSOS(selectedSymptoms, notes);
@@ -47,17 +59,25 @@ export default function ProvideInfoScreen() {
   const handleVoiceRecordToggle = async () => {
     if (isRecording) {
       recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      setIsRecording(false);
       return;
     }
 
     setVoiceError(null);
     const recognition = await startSpeechRecognition({
-      onTranscript: setNotes,
+      onTranscript: (transcript) => {
+        setNotes((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      },
       onEnd: () => {
         recognitionRef.current = null;
         setIsRecording(false);
       },
-      onError: (message) => setVoiceError(message),
+      onError: (message) => {
+        recognitionRef.current = null;
+        setIsRecording(false);
+        setVoiceError(message);
+      },
     });
     if (recognition) {
       recognitionRef.current = recognition;
