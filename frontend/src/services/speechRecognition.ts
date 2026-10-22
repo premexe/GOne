@@ -56,8 +56,6 @@ export function isSpeechRecognitionAvailable(): boolean {
 
 function preferredLanguage(): string {
   try {
-    // Use the language configured on the person's device instead of forcing
-    // English or Hindi for every emergency note.
     return Intl.DateTimeFormat().resolvedOptions().locale || 'en-IN';
   } catch (_error) {
     return 'en-IN';
@@ -87,7 +85,7 @@ export async function startSpeechRecognition(options: {
     };
 
     recognition.lang = options.language || 'en-US';
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.onresult = (event) => {
       const result = event.results[event.results.length - 1];
@@ -143,9 +141,14 @@ export async function startSpeechRecognition(options: {
     return null;
   }
 
-  // This requests both microphone permission and the separate iOS speech
-  // recognition permission. Requesting only RECORD_AUDIO left iOS unable to
-  // start transcription.
+  // 1. Abort any lingering native recognition session BEFORE attaching any listeners.
+  // This prevents leftover abort/end events from firing into new listeners.
+  try {
+    speechRecognition.abort();
+  } catch {}
+  await new Promise((r) => setTimeout(r, 120));
+
+  // 2. Request permissions
   let permission: { granted: boolean; status?: string };
   try {
     permission = await speechRecognition.requestPermissionsAsync();
@@ -163,6 +166,8 @@ export async function startSpeechRecognition(options: {
     return null;
   }
 
+  let hasStarted = false;
+  let isCleanedUp = false;
   let latestTranscript = '';
   let delivered = false;
 
@@ -174,7 +179,20 @@ export async function startSpeechRecognition(options: {
     }
   };
 
+  const cleanup = () => {
+    if (isCleanedUp) return;
+    isCleanedUp = true;
+    subscriptions.forEach((subscription) => {
+      try {
+        subscription.remove();
+      } catch {}
+    });
+  };
+
   const subscriptions = [
+    speechRecognition.addListener('start', () => {
+      hasStarted = true;
+    }),
     speechRecognition.addListener('result', (event) => {
       const transcript =
         event.results?.[0]?.transcript?.trim() ||
@@ -196,12 +214,19 @@ export async function startSpeechRecognition(options: {
     }),
     speechRecognition.addListener('error', (event) => {
       const errStr = typeof event.error === 'string' ? event.error : (event.error?.error || '');
+      // Benign non-fatal errors on Android:
+      // 'aborted' - when user or app stops recognition
+      // 'no-speech' - user took a breath or paused before speaking
+      // 'speech-timeout' - user paused speaking
       if (!['aborted', 'no-speech', 'speech-timeout'].includes(errStr)) {
-        options.onError(event.message || 'Speech recognition could not transcribe this recording.');
+        cleanup();
+        options.onError(event.message || `Speech recognition note: ${errStr}`);
       }
     }),
     speechRecognition.addListener('end', () => {
-      subscriptions.forEach((subscription) => subscription.remove());
+      // Ignore end event if start was never received (e.g. echo from previous abort)
+      if (!hasStarted) return;
+      cleanup();
       if (latestTranscript && !delivered) {
         deliver(latestTranscript);
       }
@@ -212,24 +237,20 @@ export async function startSpeechRecognition(options: {
   const locale = options.language || preferredLanguage();
 
   try {
-    try {
-      speechRecognition.abort();
-    } catch {}
-
     speechRecognition.start({
       lang: locale,
-      continuous: false,
+      continuous: true,
       interimResults: true,
       requiresOnDeviceRecognition: false,
       addsPunctuation: false,
-      contextualStrings: ['chest pain', 'breathing difficulty', 'bleeding', 'accident', 'unconscious'],
+      contextualStrings: ['chest pain', 'breathing difficulty', 'bleeding', 'accident', 'unconscious', 'asthma', 'heart attack'],
       androidIntentOptions: {
-        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2000,
-        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 1500,
+        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 10000,
+        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 5000,
       },
     });
   } catch (error) {
-    subscriptions.forEach((subscription) => subscription.remove());
+    cleanup();
     options.onError(error instanceof Error ? error.message : 'Speech recognition could not start.');
     return null;
   }
@@ -237,11 +258,13 @@ export async function startSpeechRecognition(options: {
   return {
     stop: () => {
       try {
+        cleanup();
         speechRecognition.stop();
       } catch {}
     },
     abort: () => {
       try {
+        cleanup();
         latestTranscript = '';
         speechRecognition.abort();
       } catch {}

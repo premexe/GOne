@@ -30,6 +30,8 @@ export default function ResqVoiceScreen() {
   const connectedRef = useRef(false);
   const listeningRef = useRef(false);
   const thinkingRef = useRef(false);
+  const inputRef = useRef('');
+  inputRef.current = input;
 
   const addMessage = (sender: Message['sender'], text: string) => setMessages((old) => [...old, { id: `${Date.now()}-${Math.random()}`, sender, text }]);
   const stopListening = () => {
@@ -104,11 +106,13 @@ export default function ResqVoiceScreen() {
     const handle = await startSpeechRecognition({
       onInterimTranscript: (interim) => {
         if (interim) {
+          inputRef.current = interim;
           setInput(interim);
         }
       },
       onTranscript: (transcript) => {
         if (transcript.trim()) {
+          inputRef.current = transcript;
           setInput(transcript);
           void sendTurn(transcript);
         }
@@ -134,7 +138,7 @@ export default function ResqVoiceScreen() {
   const handleMicPress = () => {
     if (thinking || completing) return;
     if (listening) {
-      const pendingText = input.trim();
+      const pendingText = (inputRef.current || input).trim();
       stopListening();
       if (pendingText) {
         void sendTurn(pendingText);

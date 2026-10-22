@@ -240,7 +240,8 @@ class VoiceService:
     @staticmethod
     def is_calling_enabled() -> bool:
         api_key = (os.getenv("BLAND_API_KEY") or os.getenv("Bland_api") or "").strip()
-        enabled = os.getenv("ENABLE_SOS_VOICE_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+        default_enabled = "true" if api_key else "false"
+        enabled = os.getenv("ENABLE_SOS_VOICE_CALLS", default_enabled).strip().lower() in {"1", "true", "yes", "on"}
         return bool(api_key) and enabled
 
     @staticmethod
@@ -269,30 +270,19 @@ class VoiceService:
             return {"call_sid": sos.call_sid, "status": sos.call_status or "IN_PROGRESS", "simulated": False}
 
         api_key = (os.getenv("BLAND_API_KEY") or os.getenv("Bland_api") or "").strip()
-        enabled = os.getenv("ENABLE_SOS_VOICE_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
-        logger.info(
-            "Bland configuration | sos=%s api_key_present=%s calls_enabled=%s voice=%s webhook=%s",
-            sos_id,
-            bool(api_key),
-            enabled,
-            os.getenv("BLAND_VOICE", "maya").strip() or "maya",
-            bool(os.getenv("PUBLIC_BACKEND_URL", "").strip()),
-        )
+        default_enabled = "true" if api_key else "false"
+        enabled = os.getenv("ENABLE_SOS_VOICE_CALLS", default_enabled).strip().lower() in {"1", "true", "yes", "on"}
 
-        if not enabled:
-            logger.info("Voice calls are disabled (ENABLE_SOS_VOICE_CALLS=false) for SOS %s.", sos_id)
+        if not api_key or not enabled:
+            logger.info(
+                "Outbound Bland phone call inactive (BLAND_API_KEY not configured or calls disabled). "
+                "In-app ResQ AI voice companion is active for SOS %s.",
+                sos_id,
+            )
             if sos:
-                sos.call_status = "DISABLED"
+                sos.call_status = "IN_APP_ACTIVE"
                 db.commit()
-            return {"call_sid": None, "status": "DISABLED", "simulated": False}
-
-        if not api_key:
-            err_msg = "BLAND_API_KEY is missing in backend/.env"
-            logger.warning("Voice call not placed for SOS %s: %s", sos_id, err_msg)
-            if sos:
-                sos.call_status = "CONFIGURATION_ERROR"
-                db.commit()
-            return {"call_sid": None, "status": "CONFIGURATION_ERROR", "error": err_msg, "simulated": False}
+            return {"call_sid": None, "status": "IN_APP_ACTIVE", "simulated": False}
 
         # Build patient profile context
         patient_name = sos.patient_name if sos and sos.patient_name else "there"
