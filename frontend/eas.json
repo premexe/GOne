@@ -14,13 +14,15 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://lifelink-backend-1tzq.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://lifelink-backend-1tzq.onrender.com",
+        "EXPO_PUBLIC_AGORA_APP_ID": "8d9be73b66634d248adac257e0871278"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://lifelink-backend-1tzq.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://lifelink-backend-1tzq.onrender.com",
+        "EXPO_PUBLIC_AGORA_APP_ID": "8d9be73b66634d248adac257e0871278"
       }
     }
   },
