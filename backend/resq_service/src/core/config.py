@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     
     GROQ_API_KEY: str = ""
     # Llama 3.3 70B was retired from the Groq developer tier.
-    GROQ_MODEL: str = "openai/gpt-oss-20b"
+    GROQ_MODEL: str = "llama3-8b-8192"
     
     # STT Provider
     SARVAM_API_KEY: str = ""
