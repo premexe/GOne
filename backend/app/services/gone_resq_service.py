@@ -28,6 +28,8 @@ from app.models.users import User
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-8b-8192").strip()
 
 
 # ── 1. G-ONE ResQ Protocol Definitions ────────────────────────────────────────
@@ -532,6 +534,44 @@ RESPONSE LANGUAGE: {lang_instructions.get(lang_code, lang_instructions['en'])}
                     used_provider = "gemini-2.5-flash"
             except Exception as e:
                 logger.warning("ResQ Gemini generation fallback: %s", e)
+
+        # ── Groq Fallback (when Gemini quota exhausted or unavailable) ──────────
+        if not voice_text and GROQ_API_KEY:
+            try:
+                import httpx
+                groq_system = (
+                    "You are G-ONE ResQ, a calm emergency first-aid voice assistant on a live call. "
+                    "Give 2-3 spoken sentences: one immediate action and one follow-up triage question. "
+                    f"Respond in {lang_instructions.get(lang_code, lang_instructions['en'])}. "
+                    "Never use bullet points, markdown, or formatting. Never prescribe medication or diagnose."
+                )
+                groq_user = (
+                    f"Emergency: {protocol['title']} ({protocol['severity']})\n"
+                    f"Patient: {patient_ctx['patient_name']}, Blood: {patient_ctx['blood_group']}, "
+                    f"Allergies: {patient_ctx['allergies']}\n"
+                    + (f"Conversation so far:\n{history_text}\n" if history_text else "")
+                    + f"Patient said: '{user_speech}'\nRespond now."
+                )
+                messages_groq = [
+                    {"role": "system", "content": groq_system},
+                    {"role": "user", "content": groq_user},
+                ]
+                with httpx.Client(timeout=8.0) as client:
+                    resp = client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                        json={"model": GROQ_MODEL, "messages": messages_groq, "temperature": 0.2, "max_tokens": 256},
+                    )
+                if resp.status_code == 200:
+                    groq_text = resp.json()["choices"][0]["message"]["content"].strip()
+                    groq_text = re.sub(r'\n+', ' ', groq_text).strip()
+                    if groq_text and len(groq_text) > 10:
+                        voice_text = groq_text
+                        used_provider = f"groq/{GROQ_MODEL}"
+                else:
+                    logger.warning("ResQ Groq fallback returned %s: %s", resp.status_code, resp.text[:200])
+            except Exception as e:
+                logger.warning("ResQ Groq fallback error: %s", e)
 
         # Deterministic Protocol Fallback — make it situation-aware too
         if not voice_text:
