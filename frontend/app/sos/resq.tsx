@@ -70,7 +70,15 @@ export default function ResqVoiceScreen() {
       setStatus('ResQ guidance ready.');
       addMessage('assistant', response);
       Speech.stop();
-      Speech.speak(response, { language: ['hi', 'hinglish'].includes(result.language || '') ? 'hi-IN' : 'en-IN', rate: 0.92 });
+      Speech.speak(response, {
+        language: ['hi', 'hinglish'].includes(result.language || '') ? 'hi-IN' : 'en-IN',
+        rate: 0.92,
+        onDone: () => {
+          if (!completing && connectedRef.current) {
+            startListening();
+          }
+        },
+      });
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Cannot reach ResQ. Check the Render service and try again.');
     } finally {
@@ -98,6 +106,11 @@ export default function ResqVoiceScreen() {
     socket.onopen = () => {
       connectedRef.current = true; setConnected(true); setStatus('Connected. Tell ResQ what happened.');
       socket.send(JSON.stringify({ type: 'INIT', patient_id: user?.id ? `USER-${user.id}` : 'ANONYMOUS_EMERGENCY', sos_id: sosId ? Number(sosId) : undefined, token: getToken() || '' }));
+      setTimeout(() => {
+        if (!completing && connectedRef.current) {
+          startListening();
+        }
+      }, 700);
     };
     socket.onmessage = (event) => {
       try {
@@ -108,7 +121,17 @@ export default function ResqVoiceScreen() {
           setClassification(String(data.emergency_type || 'general emergency').replace(/_/g, ' ').toUpperCase());
           setSeverity(String(data.severity || 'moderate').toUpperCase()); setLanguage(String(data.language || 'auto').toUpperCase()); setProvider(String(data.provider_used || 'Safety protocol'));
           setStatus(data.handover_status === 'DISPATCHED' ? 'Emergency handover dispatched.' : 'ResQ guidance ready.');
-          addMessage('assistant', data.text); Speech.stop(); Speech.speak(data.text, { language: ['hi', 'hinglish'].includes(data.language) ? 'hi-IN' : 'en-IN', rate: 0.92 });
+          addMessage('assistant', data.text);
+          Speech.stop();
+          Speech.speak(data.text, {
+            language: ['hi', 'hinglish'].includes(data.language) ? 'hi-IN' : 'en-IN',
+            rate: 0.92,
+            onDone: () => {
+              if (!completing && connectedRef.current) {
+                startListening();
+              }
+            },
+          });
         } else if (data.type === 'SESSION_COMPLETED') {
           setCompleting(false); setStatus(data.message || (data.success ? 'Transcript emailed.' : 'Unable to email transcript.'));
           if (data.success) setTimeout(() => router.back(), 1300);

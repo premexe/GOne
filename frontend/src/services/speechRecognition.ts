@@ -209,6 +209,10 @@ export async function startSpeechRecognition(options: {
       requiresOnDeviceRecognition: false,
       addsPunctuation: false,
       contextualStrings: ['chest pain', 'breathing difficulty', 'bleeding', 'accident', 'unconscious'],
+      androidIntentOptions: {
+        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 1500,
+        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 1200,
+      },
     });
   } catch (error) {
     subscriptions.forEach((subscription) => subscription.remove());
