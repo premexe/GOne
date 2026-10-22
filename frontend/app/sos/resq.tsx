@@ -89,66 +89,78 @@ export default function ResqVoiceScreen() {
   };
 
   const speakGuidance = async (text: string, langHint?: string) => {
+    if (!text?.trim()) return;
+
+    // Stop any current TTS and wait for audio focus to release on Android
     try {
-      const isSpeaking = await Speech.isSpeakingAsync().catch(() => false);
-      if (isSpeaking) {
+      const wasSpeaking = await Speech.isSpeakingAsync().catch(() => false);
+      if (wasSpeaking) {
         Speech.stop();
-        await new Promise((r) => setTimeout(r, 120));
+        await new Promise((r) => setTimeout(r, 250));
       }
     } catch {}
 
-    // Allow native Android audio focus to cleanly transition from microphone to speaker
-    await new Promise((r) => setTimeout(r, 200));
+    // Android needs extra time after mic capture ends before TTS can acquire audio focus
+    await new Promise((r) => setTimeout(r, 450));
     if (completing) return;
 
     let finished = false;
-    const onFinished = () => {
-      if (!finished) {
-        finished = true;
-        if (!completing && connectedRef.current) {
-          void startListening();
-        }
+    const onFinished = async () => {
+      if (finished) return;
+      finished = true;
+      if (completing || !connectedRef.current) return;
+
+      // Wait for TTS engine to fully release the audio output device before mic opens
+      await new Promise((r) => setTimeout(r, 350));
+
+      // Double-check nothing else started speaking in the gap
+      const stillSpeaking = await Speech.isSpeakingAsync().catch(() => false);
+      if (!stillSpeaking && !completing && connectedRef.current) {
+        void startListening();
       }
     };
 
     const isDevanagari = /[\u0900-\u097F]/.test(text);
-    // Don't force 'en-IN' because Android devices without an en-IN voice pack will stay silent.
-    // Use 'hi-IN' for Devanagari text, or undefined (system default voice) for English/Latin.
+    // Use hi-IN for Devanagari script; fall back to system default for everything else
+    // (forcing en-IN fails silently on devices without that voice pack installed)
     const targetLang = isDevanagari ? 'hi-IN' : (langHint === 'hi' ? 'hi-IN' : undefined);
 
-    try {
-      Speech.speak(text, {
-        language: targetLang,
-        pitch: 1.0,
-        rate: 0.92,
-        onDone: onFinished,
-        onStopped: onFinished,
-        onError: (e) => {
-          console.warn('Speech primary failed, falling back to system default voice:', e);
-          try {
-            Speech.speak(text, {
-              rate: 0.92,
-              onDone: onFinished,
-              onStopped: onFinished,
-              onError: onFinished,
-            });
-          } catch {
-            onFinished();
-          }
-        },
+    const trySpeak = (lang?: string) => {
+      return new Promise<void>((resolve) => {
+        try {
+          Speech.speak(text, {
+            language: lang,
+            pitch: 1.0,
+            rate: 0.9,
+            onDone: () => { resolve(); onFinished(); },
+            onStopped: () => { resolve(); onFinished(); },
+            onError: (e) => {
+              console.warn('expo-speech error:', e);
+              resolve();
+              if (lang !== undefined) {
+                // Retry with system default voice
+                try {
+                  Speech.speak(text, {
+                    rate: 0.9,
+                    onDone: () => onFinished(),
+                    onStopped: () => onFinished(),
+                    onError: () => onFinished(),
+                  });
+                } catch { onFinished(); }
+              } else {
+                onFinished();
+              }
+            },
+          });
+        } catch (err) {
+          console.warn('Speech.speak() threw:', err);
+          resolve();
+          onFinished();
+        }
       });
-    } catch (err) {
-      console.warn('Speech speak exception:', err);
-      try {
-        Speech.speak(text, {
-          onDone: onFinished,
-          onStopped: onFinished,
-          onError: onFinished,
-        });
-      } catch {
-        onFinished();
-      }
-    }
+    };
+
+    await trySpeak(targetLang);
   };
 
   const completeSession = () => {

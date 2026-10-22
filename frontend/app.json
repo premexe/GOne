@@ -12,7 +12,9 @@
       "bundleIdentifier": "com.lifelink.aiplus",
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Allow G-ONE to transcribe emergency voice notes.",
-        "NSMicrophoneUsageDescription": "Allow G-ONE to record emergency voice notes."
+        "NSMicrophoneUsageDescription": "Allow G-ONE to record emergency voice notes.",
+        "NSLocationWhenInUseUsageDescription": "Allow G-ONE to find nearby hospitals based on your location.",
+        "NSLocationAlwaysUsageDescription": "Allow G-ONE to find nearby hospitals and dispatch emergency responders."
       }
     },
     "android": {
@@ -25,7 +27,9 @@
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -54,7 +58,13 @@
         }
       ],
       "expo-asset",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow G-ONE to find nearby hospitals and dispatch emergency responders."
+        }
+      ]
     ],
     "extra": {
       "router": {},
