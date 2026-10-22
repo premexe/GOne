@@ -69,16 +69,7 @@ export default function ResqVoiceScreen() {
       setProvider(String(result.provider || 'Safety protocol'));
       setStatus('ResQ guidance ready.');
       addMessage('assistant', response);
-      Speech.stop();
-      Speech.speak(response, {
-        language: ['hi', 'hinglish'].includes(result.language || '') ? 'hi-IN' : 'en-IN',
-        rate: 0.92,
-        onDone: () => {
-          if (!completing && connectedRef.current) {
-            startListening();
-          }
-        },
-      });
+      void speakGuidance(response, result.language);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Cannot reach ResQ. Check the Render service and try again.');
     } finally {
@@ -96,6 +87,70 @@ export default function ResqVoiceScreen() {
     recognitionRef.current = handle;
     if (!handle) { listeningRef.current = false; setListening(false); }
   };
+
+  const speakGuidance = async (text: string, langHint?: string) => {
+    try {
+      const isSpeaking = await Speech.isSpeakingAsync().catch(() => false);
+      if (isSpeaking) {
+        Speech.stop();
+        await new Promise((r) => setTimeout(r, 120));
+      }
+    } catch {}
+
+    // Allow native Android audio focus to cleanly transition from microphone to speaker
+    await new Promise((r) => setTimeout(r, 200));
+    if (completing) return;
+
+    let finished = false;
+    const onFinished = () => {
+      if (!finished) {
+        finished = true;
+        if (!completing && connectedRef.current) {
+          void startListening();
+        }
+      }
+    };
+
+    const isDevanagari = /[\u0900-\u097F]/.test(text);
+    // Don't force 'en-IN' because Android devices without an en-IN voice pack will stay silent.
+    // Use 'hi-IN' for Devanagari text, or undefined (system default voice) for English/Latin.
+    const targetLang = isDevanagari ? 'hi-IN' : (langHint === 'hi' ? 'hi-IN' : undefined);
+
+    try {
+      Speech.speak(text, {
+        language: targetLang,
+        pitch: 1.0,
+        rate: 0.92,
+        onDone: onFinished,
+        onStopped: onFinished,
+        onError: (e) => {
+          console.warn('Speech primary failed, falling back to system default voice:', e);
+          try {
+            Speech.speak(text, {
+              rate: 0.92,
+              onDone: onFinished,
+              onStopped: onFinished,
+              onError: onFinished,
+            });
+          } catch {
+            onFinished();
+          }
+        },
+      });
+    } catch (err) {
+      console.warn('Speech speak exception:', err);
+      try {
+        Speech.speak(text, {
+          onDone: onFinished,
+          onStopped: onFinished,
+          onError: onFinished,
+        });
+      } catch {
+        onFinished();
+      }
+    }
+  };
+
   const completeSession = () => {
     if (!connectedRef.current || socketRef.current?.readyState !== WebSocket.OPEN || completing) return;
     stopListening(); setCompleting(true); setStatus('Saving transcript and sending emergency emails...'); socketRef.current.send(JSON.stringify({ type: 'END_SESSION' }));
@@ -122,16 +177,7 @@ export default function ResqVoiceScreen() {
           setSeverity(String(data.severity || 'moderate').toUpperCase()); setLanguage(String(data.language || 'auto').toUpperCase()); setProvider(String(data.provider_used || 'Safety protocol'));
           setStatus(data.handover_status === 'DISPATCHED' ? 'Emergency handover dispatched.' : 'ResQ guidance ready.');
           addMessage('assistant', data.text);
-          Speech.stop();
-          Speech.speak(data.text, {
-            language: ['hi', 'hinglish'].includes(data.language) ? 'hi-IN' : 'en-IN',
-            rate: 0.92,
-            onDone: () => {
-              if (!completing && connectedRef.current) {
-                startListening();
-              }
-            },
-          });
+          void speakGuidance(data.text, data.language);
         } else if (data.type === 'SESSION_COMPLETED') {
           setCompleting(false); setStatus(data.message || (data.success ? 'Transcript emailed.' : 'Unable to email transcript.'));
           if (data.success) setTimeout(() => router.back(), 1300);
@@ -146,7 +192,7 @@ export default function ResqVoiceScreen() {
   return <View style={styles.container}>
     <View style={styles.header}><Pressable onPress={() => router.back()}><Text style={styles.back}>Back to SOS</Text></Pressable><Text style={styles.headerTitle}>G-ONE ResQ Voice Agent</Text><View style={[styles.dot, connected ? styles.online : styles.offline]} /></View>
     <View style={styles.statusCard}><Text style={styles.status}>{status}</Text><View style={styles.metrics}><Text style={styles.metric}>{classification}</Text><Text style={[styles.metric, severity === 'CRITICAL' && styles.critical]}>{severity}</Text><Text style={styles.metric}>{language}</Text></View>{provider ? <Text style={styles.provider}>AI engine: {provider}</Text> : null}</View>
-    <FlatList data={messages} keyExtractor={(item) => item.id} contentContainerStyle={styles.feed} renderItem={({ item }) => <View style={[styles.message, item.sender === 'user' ? styles.userMessage : styles.agentMessage]}><Text style={styles.sender}>{item.sender === 'user' ? 'YOU' : 'G-ONE RESQ'}</Text><Text style={styles.messageText}>{item.text}</Text></View>} ListEmptyComponent={<Text style={styles.empty}>Start speaking or type your emergency. End the voice session to email its full transcript to the patient and emergency contacts.</Text>} />
+    <FlatList data={messages} keyExtractor={(item) => item.id} contentContainerStyle={styles.feed} renderItem={({ item }) => <Pressable onPress={() => item.sender === 'assistant' && speakGuidance(item.text)} style={[styles.message, item.sender === 'user' ? styles.userMessage : styles.agentMessage]}><Text style={styles.sender}>{item.sender === 'user' ? 'YOU' : 'G-ONE RESQ 🔊'}</Text><Text style={styles.messageText}>{item.text}</Text></Pressable>} ListEmptyComponent={<Text style={styles.empty}>Start speaking or type your emergency. End the voice session to email its full transcript to the patient and emergency contacts.</Text>} />
     <View style={styles.controls}><View style={styles.inputRow}><TextInput value={input} onChangeText={setInput} placeholder="Type in any language..." placeholderTextColor="#94A3B8" style={styles.input} multiline /><Pressable disabled={thinking || completing || !input.trim()} onPress={() => sendTurn(input)} style={[styles.send, (thinking || completing || !input.trim()) && styles.disabled]}><Send size={20} color="#FFF" /></Pressable></View><Pressable disabled={thinking || completing} onPress={listening ? stopListening : startListening} style={[styles.mic, (listening || thinking) && styles.micActive]}>{thinking ? <ActivityIndicator color="#FFF" /> : listening ? <MicOff size={24} color="#FFF" /> : <Mic size={24} color="#FFF" />}<Text style={styles.buttonText}>{thinking ? 'Thinking...' : listening ? 'Tap to finish speaking' : 'Tap to speak'}</Text></Pressable><Pressable disabled={!connected || completing} onPress={completeSession} style={[styles.end, (!connected || completing) && styles.disabled]}><PhoneOff size={19} color="#FFF" /><Text style={styles.buttonText}>{completing ? 'Sending transcript...' : 'End and email handover'}</Text></Pressable><View style={styles.footer}><Volume2 size={15} color="#94A3B8" /><Text style={styles.footerText}>Replies are spoken aloud. For immediate danger, contact local emergency services.</Text></View></View>
   </View>;
 }
