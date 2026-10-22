@@ -30,6 +30,7 @@ export default function ResqVoiceScreen() {
   const connectedRef = useRef(false);
   const listeningRef = useRef(false);
   const thinkingRef = useRef(false);
+  const hasTranscriptRef = useRef(false);
 
   const addMessage = (sender: Message['sender'], text: string) => setMessages((old) => [...old, { id: `${Date.now()}-${Math.random()}`, sender, text }]);
   const stopListening = () => { listeningRef.current = false; setListening(false); recognitionRef.current?.abort(); recognitionRef.current = null; };
@@ -41,8 +42,17 @@ export default function ResqVoiceScreen() {
   };
   const startListening = async () => {
     if (!connectedRef.current || listeningRef.current || thinkingRef.current || completing) return;
+    hasTranscriptRef.current = false;
     setStatus('Listening... speak naturally in your language.'); listeningRef.current = true; setListening(true);
-    const handle = await startSpeechRecognition({ onTranscript: sendTurn, onEnd: () => { listeningRef.current = false; setListening(false); }, onError: (message) => { listeningRef.current = false; setListening(false); setStatus(message); } });
+    const handle = await startSpeechRecognition({
+      onTranscript: (text) => { hasTranscriptRef.current = true; sendTurn(text); },
+      onEnd: () => {
+        listeningRef.current = false;
+        setListening(false);
+        if (!hasTranscriptRef.current && !thinkingRef.current) setStatus('I did not catch that. Tap to speak and try again.');
+      },
+      onError: (message) => { listeningRef.current = false; setListening(false); setStatus(message); },
+    });
     recognitionRef.current = handle;
     if (!handle) { listeningRef.current = false; setListening(false); }
   };

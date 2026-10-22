@@ -32,7 +32,8 @@ class GroqProvider(LLMProvider):
             "You are giving critical phone first-aid guidance. "
             "NEVER diagnose, NEVER prescribe any medication or dosage. "
             "Answer in 2-3 spoken sentences directly matching the caller's language (" + language + "). "
-            "Instruct ONLY using the provided Approved Actions."
+            "Use the caller's latest details and the conversation history: give one immediate approved action and ask one new, focused triage question. "
+            "Instruct ONLY using the provided Approved Actions. Do not use lists or markdown."
         )
 
         patient_info = patient_context.summarize_for_prompt() if patient_context else "None."

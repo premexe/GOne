@@ -140,11 +140,20 @@ export async function startSpeechRecognition(options: {
       // Android emits changing interim hypotheses. Persist only a final answer
       // so the SOS transcript never contains the same sentence repeatedly.
       if (event.isFinal === false) return;
-      const transcript = event.results[0]?.transcript?.trim();
+      // Results may contain multiple alternatives; use the highest-confidence
+      // transcript rather than dropping a valid final result after a pause.
+      const transcript = event.results
+        ?.map((result: { transcript?: string; confidence?: number }) => result.transcript?.trim())
+        .find(Boolean);
       if (transcript) options.onTranscript(transcript);
     }),
     speechRecognition.addListener('error', (event) => {
-      if (event.error !== 'aborted') options.onError(event.message || 'Speech recognition could not transcribe this recording.');
+      // Silence timeouts are normal when a caller taps the microphone by
+      // mistake; leave the screen ready for the next attempt instead of
+      // presenting a misleading failure.
+      if (!['aborted', 'no-speech', 'speech-timeout'].includes(event.error)) {
+        options.onError(event.message || 'Speech recognition could not transcribe this recording.');
+      }
     }),
     speechRecognition.addListener('end', () => {
       subscriptions.forEach((subscription) => subscription.remove());
