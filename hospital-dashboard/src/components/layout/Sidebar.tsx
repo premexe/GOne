@@ -45,7 +45,9 @@ export function Sidebar() {
 
   return <aside className="sidebar">
     <div>
-      <NavLink to="/dashboard" className="brand"><span className="brand__mark">L+</span><span><strong>LifeLink AI+</strong><small>Hospital Network</small></span></NavLink>
+      <NavLink to="/dashboard" className="brand brand--logo">
+        <img src="/lifelink-logo.png" alt="LifeLink AI+" className="brand__logo-img" />
+      </NavLink>
       <nav className="sidebar__nav" aria-label="Primary navigation">
         {navItems.map(({ to, label, index, icon: Icon }) => <NavLink key={to} to={to} className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}><span className="nav-item__index">{index}</span><Icon size={18} strokeWidth={1.8} /><span>{label}</span>{label === 'New Emergencies' && <span className="nav-item__count">{counts.newCases > 0 && <i className="attention-dot attention-dot--high" aria-hidden="true"/>}{counts.newCases}</span>}{label === 'Ongoing Cases' && counts.ongoing > 0 && <span className="nav-item__count nav-item__count--teal">{counts.ongoing}</span>}{label === 'Completed Cases' && counts.completed > 0 && <span className="nav-item__count" style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' }}>{counts.completed}</span>}</NavLink>)}
       </nav>

@@ -1,4 +1,4 @@
-﻿import { Eye, EyeOff, HeartPulse, LockKeyhole, Network } from 'lucide-react';
+import { Eye, EyeOff, LockKeyhole, Network } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -32,7 +32,7 @@ export function Login() {
 
   return <div className="login-page">
     <section className="login-brand-panel">
-      <div className="login-brand"><span className="brand__mark"><HeartPulse size={22} /></span><div><strong>LifeLink AI+</strong><small>Hospital Operations Network</small></div></div>
+      <div className="login-brand"><img src="/lifelink-logo.png" alt="LifeLink AI+" className="login-brand__logo-img" /></div>
       <div className="login-hero-copy"><span className="eyebrow eyebrow--light">Connected emergency response</span><h1>Emergency response,<br />connected.</h1><p>One operational portal for authorized LifeLink hospital partners receiving cases allocated by the LifeLink network.</p></div>
       <div className="login-network-note"><Network size={18} /><span><strong>Multi-hospital coordination</strong>Each partner sees only its allocated cases, resources and capacity.</span></div>
     </section>
