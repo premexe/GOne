@@ -1,4 +1,4 @@
-﻿# G-ONE: AI-Powered Emergency Health Companion
+# G-ONE: AI-Powered Emergency Health Companion
 
 **Full-Stack Emergency Response Platform for the Indian Healthcare Context**
 
@@ -219,33 +219,119 @@ GOne/
 
 ---
 
-## Getting Started
+## Getting Started — Full Local Setup
 
-### Prerequisites
+> Complete guide to clone, configure, and run all four parts:  
+> **Backend API · Mobile App · Hospital Dashboard · Database**
 
-- Python 3.12+
-- Node.js 20+
-- Expo Go (iOS/Android) or Android device for APK testing
+---
 
-### 1. Clone the Repository
+### Prerequisites — Install These First
+
+| Tool | Minimum Version | Download |
+|---|---|---|
+| **Python** | 3.12+ | https://www.python.org/downloads/ |
+| **Node.js** | 20+ | https://nodejs.org/ |
+| **Git** | any | https://git-scm.com/ |
+| **Expo CLI** | latest | `npm install -g expo-cli` |
+| **EAS CLI** | latest (for APK builds only) | `npm install -g eas-cli` |
+| **Expo Go app** | latest | Install on your Android/iOS phone |
+
+---
+
+### Step 1 — Clone the Repository
 
 ```bash
 git clone https://github.com/premexe/GOne.git
 cd GOne
 ```
 
-### 2. Start the Backend
+---
+
+### Step 2 — Database Setup (choose one)
+
+#### Option A — SQLite (zero setup, local only ✅ recommended for dev)
+Do nothing. The backend auto-creates `lifelink_ai.db` in the project root on first run.  
+Skip `DATABASE_URL` in your `.env` — the backend falls back to SQLite automatically.
+
+#### Option B — Supabase PostgreSQL (cloud, matches production)
+1. Go to https://supabase.com → **New Project**
+2. After creation → **Project Settings → Database → Connection Pooling**
+3. Copy the **Pooler connection string** (port 6543, Transaction mode)
+4. Paste it as `DATABASE_URL` in `backend/.env` (see Step 3)
+
+---
+
+### Step 3 — Configure the Backend Environment
 
 ```powershell
+copy backend\.env.example backend\.env
+```
+
+Open `backend\.env` and fill in:
+
+```env
+# REQUIRED
+JWT_SECRET_KEY=any-long-random-string-here   # e.g. openssl rand -hex 32
+
+# OPTIONAL — leave blank to use SQLite
+DATABASE_URL=postgresql://postgres.YOURPROJECT:PASS@aws-0-ap-south-1.pooler.supabase.com:6543/postgres
+
+# OPTIONAL — leave blank to use offline fallback AI
+GEMINI_API_KEY=your_gemini_api_key_here      # https://aistudio.google.com/
+
+# OPTIONAL — email handover reports
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=587
+SMTP_USERNAME=resend
+SMTP_PASSWORD=re_your_resend_api_key_here    # https://resend.com/
+
+# KEEP FALSE for local dev
+ENABLE_SOS_VOICE_CALLS=false
+```
+
+> **Minimum to run locally:** only `JWT_SECRET_KEY` is required. Everything else has a working fallback.
+
+---
+
+### Step 4 — Start the Backend
+
+```powershell
+# Create and activate virtual environment
 python -m venv .venv
 .venv\Scripts\Activate.ps1
+
+# Install dependencies
 pip install -r backend/requirements.txt
+
+# Run the server
 .venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload
 ```
 
-Swagger docs: http://localhost:8000/docs
+**Verify:** Open http://localhost:8000/docs — Swagger UI should load.
 
-### 3. Start the Frontend (Expo Go)
+> On first run with SQLite, the backend auto-seeds hospitals and sample data.
+
+---
+
+### Step 5 — Configure the Mobile App
+
+Open `frontend\.env` (create it if missing):
+
+```env
+# For local dev with Expo Go on your phone:
+# Expo auto-detects your machine's LAN IP — this value is a fallback only
+EXPO_PUBLIC_API_URL=http://localhost:8000
+
+# Agora (optional — only needed for in-app audio calls)
+EXPO_PUBLIC_AGORA_APP_ID=your_agora_app_id
+```
+
+> **Important:** When scanning QR with Expo Go on a physical phone, replace `localhost` with your machine's **local IP** (e.g. `192.168.1.x`). Run `ipconfig` to find it.
+
+---
+
+### Step 6 — Start the Mobile App
 
 ```powershell
 cd frontend
@@ -253,22 +339,79 @@ npm install
 npx expo start
 ```
 
-### 4. Use the Startup Script (recommended)
+- Scan the QR code with **Expo Go** on your phone
+- Or press `a` to open Android emulator, `i` for iOS simulator
+- Press `w` to open in browser (limited features)
+
+---
+
+### Step 7 — Start the Hospital Dashboard
 
 ```powershell
+cd hospital-dashboard
+npm install
+```
+
+Create `hospital-dashboard\.env`:
+
+```env
+# Use 'mock' to run without backend (default, safe)
+VITE_DATA_MODE=mock
+
+# Switch to 'api' to connect to the real backend
+# VITE_DATA_MODE=api
+VITE_API_BASE_URL=http://localhost:8000
+
+VITE_OSRM_BASE_URL=https://router.project-osrm.org
+```
+
+```powershell
+npm run dev
+```
+
+**Verify:** Open http://localhost:5173 — hospital operations dashboard loads.
+
+> Set `VITE_DATA_MODE=api` only after the backend is running and seeded.
+
+---
+
+### Step 8 — (Optional) One-Command Startup
+
+Instead of Steps 4–7 separately, use the startup script:
+
+```powershell
+# From the project root
+.venv\Scripts\Activate.ps1
 ./start.ps1
 ```
 
-Starts the backend on port 8000 and optionally sets up a public ngrok tunnel.
+This launches the backend on port 8000 and optionally tunnels it via ngrok for public HTTPS access (needed for Bland AI / webhook callbacks).
 
-### 5. Build Standalone Android APK via EAS Cloud
+---
+
+### Step 9 — (Optional) Build Android APK
 
 ```powershell
 cd frontend
-npx eas-cli build --platform android --profile preview
+npx eas login           # login to your Expo account
+npx eas build --platform android --profile preview
 ```
 
-Download from: https://expo.dev/accounts/premexe/projects/lifelink-ai-plus/builds
+Download the `.apk` from: https://expo.dev/accounts/premexe/projects/lifelink-ai-plus/builds
+
+---
+
+### All Services at a Glance
+
+| Service | URL | Command |
+|---|---|---|
+| **Backend API** | http://localhost:8000 | `uvicorn app.main:app ...` |
+| **Swagger Docs** | http://localhost:8000/docs | *(auto with backend)* |
+| **ResQ Voice UI** | http://localhost:8000/resq/ | *(auto with backend)* |
+| **Mobile App** | Expo Go / emulator | `npx expo start` |
+| **Hospital Dashboard** | http://localhost:5173 | `npm run dev` in `hospital-dashboard/` |
+
+
 
 ---
 
